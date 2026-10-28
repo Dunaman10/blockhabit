@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#090D16"/>
+  <rect x="24" y="24" width="464" height="464" rx="104" stroke="#F7931A" stroke-width="8" stroke-opacity="0.3"/>
+  <defs>
+    <linearGradient id="btcGrad" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFA726"/>
+      <stop offset="1" stop-color="#F7931A"/>
+    </linearGradient>
+    <filter id="flameGlow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Flame Aura -->
+  <circle cx="256" cy="256" r="180" fill="#F59E0B" fill-opacity="0.12" filter="url(#flameGlow)"/>
+  <!-- Block Habit Cube -->
+  <rect x="116" y="116" width="280" height="280" rx="48" fill="url(#btcGrad)"/>
+  <!-- Bitcoin B Symbol in Center -->
+  <path d="M288 176c19.882 0 36 16.118 36 36 0 14.156-8.167 26.406-20.031 32.25 15.688 6.469 26.031 20.406 26.031 37.75 0 23.196-18.804 42-42 42h-88v-148h88zm-56 32v28h52c6.627 0 12-5.373 12-12s-5.373-12-12-12h-52zm0 60v32h56c7.732 0 14-6.268 14-14s-6.268-14-14-14h-56z" fill="#090D16"/>
+  <path d="M232 152v24M280 152v24M232 324v24M280 324v24" stroke="#090D16" stroke-width="12" stroke-linecap="round"/>
+</svg>

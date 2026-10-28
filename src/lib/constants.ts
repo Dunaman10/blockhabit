@@ -1,0 +1,188 @@
+import { BlockHabitStorage } from "@/types";
+
+export const STORAGE_KEY = "blockhabit_data_v1";
+
+export const QUICK_NOMINALS = [9990, 10000, 15000, 20000, 30000, 50000];
+
+export const HALVING_TARGET_BLOCK = 1050000;
+export const HALVING_PREVIOUS_BLOCK = 840000; // Halving ke-4 (April 2024)
+
+export const DEFAULT_BTC_PRICE_IDR = 1495000000; // ~Rp 1,495 Milyar
+
+export const INITIAL_STORAGE: BlockHabitStorage = {
+  profile: {
+    startDate: "2026-10-01T00:00:00.000Z",
+    targetHorizonYears: 3,
+    dailyFloorIdr: 10000,
+    exchangeName: "FLOQ",
+    hideBalanceOnShare: false,
+  },
+  streak: {
+    currentStreak: 0,
+    longestStreak: 0,
+    lastLoggedDate: "",
+    streakFreezesAvailable: 1,
+  },
+  transactions: [],
+  lastBackupDate: null,
+};
+
+// Data demo realistis untuk menguji aplikasi seketika
+export const SAMPLE_STORAGE: BlockHabitStorage = {
+  profile: {
+    startDate: "2026-10-01T00:00:00.000Z",
+    targetHorizonYears: 3,
+    dailyFloorIdr: 10000,
+    exchangeName: "FLOQ",
+    hideBalanceOnShare: false,
+  },
+  streak: {
+    currentStreak: 14,
+    longestStreak: 14,
+    lastLoggedDate: "2026-10-28",
+    streakFreezesAvailable: 2,
+  },
+  transactions: [
+    {
+      id: "demo-tx-1",
+      date: "2026-10-15T08:15:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1485000000,
+      btcAmount: 0.00000673,
+      satsAmount: 673,
+      note: "DCA Pagi FLOQ",
+    },
+    {
+      id: "demo-tx-2",
+      date: "2026-10-16T09:30:00.000Z",
+      amountIdr: 9990,
+      netValueIdr: 9988,
+      btcPriceAtBuy: 1493000000,
+      btcAmount: 0.00000668,
+      satsAmount: 668,
+      note: "Order Market FLOQ",
+    },
+    {
+      id: "demo-tx-3",
+      date: "2026-10-17T07:45:00.000Z",
+      amountIdr: 15000,
+      netValueIdr: 14990,
+      btcPriceAtBuy: 1478000000,
+      btcAmount: 0.00001014,
+      satsAmount: 1014,
+      note: "Diskon -2% FLOQ",
+    },
+    {
+      id: "demo-tx-4",
+      date: "2026-10-18T10:10:00.000Z",
+      amountIdr: 20000,
+      netValueIdr: 19985,
+      btcPriceAtBuy: 1470000000,
+      btcAmount: 0.00001359,
+      satsAmount: 1359,
+      note: "Mode Diskon Weekend",
+    },
+    {
+      id: "demo-tx-5",
+      date: "2026-10-19T06:55:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1482000000,
+      btcAmount: 0.00000674,
+      satsAmount: 674,
+      note: "Habit Senin",
+    },
+    {
+      id: "demo-tx-6",
+      date: "2026-10-20T08:00:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1490000000,
+      btcAmount: 0.00000670,
+      satsAmount: 670,
+      note: "DCA Rutin",
+    },
+    {
+      id: "demo-tx-7",
+      date: "2026-10-21T07:12:00.000Z",
+      amountIdr: 30000,
+      netValueIdr: 29980,
+      btcPriceAtBuy: 1465000000,
+      btcAmount: 0.00002046,
+      satsAmount: 2046,
+      note: "Dip Alert -3.5%",
+    },
+    {
+      id: "demo-tx-8",
+      date: "2026-10-22T08:20:00.000Z",
+      amountIdr: 15000,
+      netValueIdr: 14990,
+      btcPriceAtBuy: 1475000000,
+      btcAmount: 0.00001016,
+      satsAmount: 1016,
+      note: "DCA FLOQ",
+    },
+    {
+      id: "demo-tx-9",
+      date: "2026-10-23T07:30:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1488000000,
+      btcAmount: 0.00000671,
+      satsAmount: 671,
+      note: "Habit Harian",
+    },
+    {
+      id: "demo-tx-10",
+      date: "2026-10-24T09:05:00.000Z",
+      amountIdr: 20000,
+      netValueIdr: 19985,
+      btcPriceAtBuy: 1495000000,
+      btcAmount: 0.00001337,
+      satsAmount: 1337,
+      note: "Sabtu Stack",
+    },
+    {
+      id: "demo-tx-11",
+      date: "2026-10-25T08:10:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1502000000,
+      btcAmount: 0.00000665,
+      satsAmount: 665,
+      note: "Rem Pucuk",
+    },
+    {
+      id: "demo-tx-12",
+      date: "2026-10-26T07:25:00.000Z",
+      amountIdr: 15000,
+      netValueIdr: 14990,
+      btcPriceAtBuy: 1498000000,
+      btcAmount: 0.00001001,
+      satsAmount: 1001,
+      note: "Senin Rutin",
+    },
+    {
+      id: "demo-tx-13",
+      date: "2026-10-27T08:35:00.000Z",
+      amountIdr: 10000,
+      netValueIdr: 9990,
+      btcPriceAtBuy: 1505000000,
+      btcAmount: 0.00000664,
+      satsAmount: 664,
+      note: "DCA FLOQ",
+    },
+    {
+      id: "demo-tx-14",
+      date: "2026-10-28T07:00:00.000Z",
+      amountIdr: 20000,
+      netValueIdr: 19985,
+      btcPriceAtBuy: 1492000000,
+      btcAmount: 0.00001340,
+      satsAmount: 1340,
+      note: "Hari ini Stack!",
+    },
+  ],
+  lastBackupDate: "2026-10-28T12:00:00.000Z",
+};
