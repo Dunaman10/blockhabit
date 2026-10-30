@@ -153,7 +153,7 @@ export function HabitLoggerModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 pb-8 sm:pb-5 space-y-4">
           {/* Tanggal & Waktu (Backdate support) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">

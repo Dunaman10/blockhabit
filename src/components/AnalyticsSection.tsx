@@ -2,15 +2,12 @@
 
 import React from "react";
 import {
-  TrendingUp,
   Wallet,
   Coins,
   ArrowUpRight,
   ArrowDownRight,
   Scale,
-  Sparkles,
   BarChart3,
-  CalendarDays,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -22,7 +19,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { AnalyticsSummary, HabitTransaction } from "@/types";
-import { formatIdr, formatSats, formatBtc, formatPercent, formatDate } from "@/lib/calculations";
+import { formatIdr, formatSats, formatPercent, formatDate } from "@/lib/calculations";
 
 interface AnalyticsSectionProps {
   analytics: AnalyticsSummary;
@@ -41,7 +38,6 @@ export function AnalyticsSection({
   const chartData = React.useMemo(() => {
     if (!transactions || transactions.length === 0) return [];
 
-    // Urutkan transaksi dari paling lampau ke terbaru
     const sorted = [...transactions].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
@@ -63,35 +59,39 @@ export function AnalyticsSection({
   }, [transactions, currentBtcPrice]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* 4 Kartu Metrik Utama */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         {/* Card 1: Nilai Portofolio & Floating PnL */}
-        <div className="p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between">
+        <div className="p-3 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between min-w-0">
           <div>
-            <div className="flex items-center justify-between text-slate-400 mb-1">
-              <span className="text-[11px] font-semibold flex items-center gap-1">
-                <Wallet className="w-3.5 h-3.5 text-blue-400" />
-                Nilai Portofolio
+            <div className="flex items-center justify-between gap-1 text-slate-400 mb-1">
+              <span className="text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 truncate">
+                <Wallet className="w-3 h-3 text-blue-400 shrink-0" />
+                <span className="truncate">Portofolio</span>
               </span>
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center ${
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center shrink-0 whitespace-nowrap ${
                   isProfit
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                     : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
                 }`}
               >
-                {isProfit ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownRight className="w-3 h-3 mr-0.5" />}
+                {isProfit ? (
+                  <ArrowUpRight className="w-2.5 h-2.5 mr-0.5 shrink-0" />
+                ) : (
+                  <ArrowDownRight className="w-2.5 h-2.5 mr-0.5 shrink-0" />
+                )}
                 {formatPercent(analytics.floatingPnlPercent)}
               </span>
             </div>
-            <div className="text-xl font-black text-slate-100 tracking-tight">
+            <div className="text-base sm:text-xl font-black text-slate-100 tracking-tight truncate">
               {formatIdr(analytics.currentPortfolioValue)}
             </div>
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] flex items-center justify-between">
-            <span className="text-slate-400">Floating PnL:</span>
-            <span className={`font-bold ${isProfit ? "text-emerald-400" : "text-rose-400"}`}>
+          <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] flex items-center justify-between gap-1">
+            <span className="text-slate-400 shrink-0">PnL:</span>
+            <span className={`font-bold truncate ${isProfit ? "text-emerald-400" : "text-rose-400"}`}>
               {isProfit ? "+" : ""}
               {formatIdr(analytics.floatingPnlIdr)}
             </span>
@@ -99,65 +99,65 @@ export function AnalyticsSection({
         </div>
 
         {/* Card 2: Total Modal Disetor */}
-        <div className="p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between">
+        <div className="p-3 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between min-w-0">
           <div>
-            <div className="flex items-center justify-between text-slate-400 mb-1">
-              <span className="text-[11px] font-semibold flex items-center gap-1">
-                <Coins className="w-3.5 h-3.5 text-[#F7931A]" />
-                Total Modal Disetor
+            <div className="flex items-center justify-between gap-1 text-slate-400 mb-1">
+              <span className="text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 truncate">
+                <Coins className="w-3 h-3 text-[#F7931A] shrink-0" />
+                <span className="truncate">Total Modal</span>
               </span>
-              <span className="text-[10px] font-medium text-slate-500">
+              <span className="text-[9px] font-medium text-slate-500 shrink-0 whitespace-nowrap">
                 {analytics.transactionCount}x Beli
               </span>
             </div>
-            <div className="text-xl font-black text-slate-100 tracking-tight">
+            <div className="text-base sm:text-xl font-black text-slate-100 tracking-tight truncate">
               {formatIdr(analytics.totalCapitalDeployed)}
             </div>
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] flex items-center justify-between">
-            <span className="text-slate-400">Total Satoshi:</span>
-            <span className="font-extrabold text-[#F7931A]">
+          <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] flex items-center justify-between gap-1">
+            <span className="text-slate-400 shrink-0">Sats:</span>
+            <span className="font-extrabold text-[#F7931A] truncate">
               +{formatSats(analytics.totalSats)}
             </span>
           </div>
         </div>
 
-        {/* Card 3: Rata-Rata Input Nominal Beli (Fitur Utama PRD) */}
-        <div className="col-span-2 p-4 rounded-2xl glass-panel border border-amber-500/20 bg-gradient-to-br from-[#121A2D] to-[#0A0E1A] shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
+        {/* Card 3: Rata-Rata Input Nominal Beli */}
+        <div className="col-span-2 p-3.5 sm:p-4 rounded-2xl glass-panel border border-amber-500/20 bg-gradient-to-br from-[#121A2D] to-[#0A0E1A] shadow-md">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider block truncate">
                 Rata-Rata Input Nominal Beli (Habit Ticket)
               </span>
-              <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-2xl font-black text-slate-100">
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl sm:text-2xl font-black text-slate-100">
                   {formatIdr(analytics.averageHabitTicket)}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">/ transaksi DCA</span>
+                <span className="text-[11px] text-slate-400 font-medium">/ transaksi</span>
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Scale className="w-5 h-5" />
+            <div className="w-9 h-9 shrink-0 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <Scale className="w-4 h-4" />
             </div>
           </div>
 
           {/* Indikator Min, Max, dan Total Bulan Ini */}
-          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-800">
-            <div className="p-2 rounded-lg bg-slate-900/60 text-center">
-              <span className="text-[10px] text-slate-400 block font-medium">Nominal Min</span>
-              <span className="text-xs font-bold text-slate-200">
+          <div className="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-slate-800">
+            <div className="p-2 rounded-lg bg-slate-900/60 text-center min-w-0">
+              <span className="text-[9px] text-slate-400 block font-medium truncate">Min</span>
+              <span className="text-[11px] font-bold text-slate-200 block truncate">
                 {formatIdr(analytics.minTicket)}
               </span>
             </div>
-            <div className="p-2 rounded-lg bg-slate-900/60 text-center">
-              <span className="text-[10px] text-slate-400 block font-medium">Nominal Max</span>
-              <span className="text-xs font-bold text-slate-200">
+            <div className="p-2 rounded-lg bg-slate-900/60 text-center min-w-0">
+              <span className="text-[9px] text-slate-400 block font-medium truncate">Max</span>
+              <span className="text-[11px] font-bold text-slate-200 block truncate">
                 {formatIdr(analytics.maxTicket)}
               </span>
             </div>
-            <div className="p-2 rounded-lg bg-slate-900/60 text-center">
-              <span className="text-[10px] text-slate-400 block font-medium">Bulan Ini</span>
-              <span className="text-xs font-bold text-emerald-400">
+            <div className="p-2 rounded-lg bg-slate-900/60 text-center min-w-0">
+              <span className="text-[9px] text-slate-400 block font-medium truncate">Bulan Ini</span>
+              <span className="text-[11px] font-bold text-emerald-400 block truncate">
                 {formatIdr(analytics.thisMonthTotal)}
               </span>
             </div>
@@ -165,31 +165,31 @@ export function AnalyticsSection({
         </div>
 
         {/* Card 4: Posisi Rata-Rata Harga Beli BTC vs Harga Pasar */}
-        <div className="col-span-2 p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex items-center justify-between">
-          <div>
-            <span className="text-xs text-slate-400 font-semibold block">
+        <div className="col-span-2 p-3.5 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs text-slate-400 font-semibold block truncate">
               Rata-Rata Harga Beli BTC Portofoliomu
             </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-lg font-extrabold text-slate-100">
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <span className="text-sm sm:text-lg font-extrabold text-slate-100 truncate">
                 {formatIdr(analytics.averageBuyPrice)}
               </span>
-              <span className="text-[11px] text-slate-400">/ 1 BTC</span>
+              <span className="text-[10px] text-slate-400 shrink-0">/ BTC</span>
             </div>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              Harga Pasar Saat Ini: {formatIdr(currentBtcPrice)}
+            <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+              Harga Pasar: {formatIdr(currentBtcPrice)}
             </p>
           </div>
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 block">Posisi Tabungan</span>
+          <div className="text-right shrink-0">
+            <span className="text-[9px] text-slate-400 block">Posisi</span>
             <span
-              className={`text-xs font-black px-2 py-1 rounded-md inline-block mt-0.5 ${
+              className={`text-[10px] font-black px-2 py-1 rounded-md inline-block mt-0.5 whitespace-nowrap ${
                 currentBtcPrice >= analytics.averageBuyPrice
                   ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                   : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
               }`}
             >
-              {currentBtcPrice >= analytics.averageBuyPrice ? "Di Bawah Pasar (Untung)" : "Di Atas Pasar"}
+              {currentBtcPrice >= analytics.averageBuyPrice ? "Untung" : "Di Atas Pasar"}
             </span>
           </div>
         </div>
@@ -197,27 +197,27 @@ export function AnalyticsSection({
 
       {/* Grafik Pertumbuhan Modal vs Nilai Portofolio (Recharts) */}
       {chartData.length > 1 && (
-        <div className="p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/80">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-[#F7931A]" />
-              <span className="text-xs font-bold text-slate-200">
-                Pertumbuhan Kumulatif Portofolio vs Modal
+        <div className="p-3.5 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/80">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <BarChart3 className="w-3.5 h-3.5 text-[#F7931A] shrink-0" />
+              <span className="text-xs font-bold text-slate-200 truncate">
+                Pertumbuhan Portofolio vs Modal
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[10px]">
+            <div className="flex items-center gap-2 text-[9px] shrink-0">
               <span className="flex items-center gap-1 text-slate-400">
-                <span className="w-2 h-2 rounded-full bg-slate-500" /> Modal Disetor
+                <span className="w-2 h-2 rounded-full bg-slate-500" /> Modal
               </span>
               <span className="flex items-center gap-1 text-emerald-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Nilai Portofolio
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Nilai
               </span>
             </div>
           </div>
 
-          <div className="w-full h-48 sm:h-56">
+          <div className="w-full h-44 sm:h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 6, right: 6, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorModal" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#64748B" stopOpacity={0.4} />
@@ -232,13 +232,13 @@ export function AnalyticsSection({
                 <XAxis
                   dataKey="dateStr"
                   stroke="#64748B"
-                  fontSize={10}
+                  fontSize={9}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   stroke="#64748B"
-                  fontSize={10}
+                  fontSize={9}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(val) => `Rp${(val / 1000).toFixed(0)}k`}
@@ -247,12 +247,12 @@ export function AnalyticsSection({
                   contentStyle={{
                     backgroundColor: "#0D1322",
                     borderColor: "#334155",
-                    borderRadius: "12px",
+                    borderRadius: "10px",
                     fontSize: "11px",
                     color: "#F8FAFC",
                   }}
                   formatter={(value: any) => [formatIdr(Number(value) || 0), ""]}
-                  labelStyle={{ color: "#94A3B8", fontWeight: 600, marginBottom: "4px" }}
+                  labelStyle={{ color: "#94A3B8", fontWeight: 600, marginBottom: "2px" }}
                 />
                 <Area
                   type="monotone"
@@ -268,7 +268,7 @@ export function AnalyticsSection({
                   dataKey="nilaiPortofolio"
                   name="Nilai Portofolio"
                   stroke="#10B981"
-                  strokeWidth={2.5}
+                  strokeWidth={2}
                   fillOpacity={1}
                   fill="url(#colorPorto)"
                 />

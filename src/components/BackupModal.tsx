@@ -129,7 +129,7 @@ export function BackupModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="p-5 pb-8 sm:pb-5 space-y-5">
           {/* Status Alert */}
           {importStatus && (
             <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">

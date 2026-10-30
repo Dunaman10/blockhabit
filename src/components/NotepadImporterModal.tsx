@@ -76,7 +76,7 @@ export function NotepadImporterModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 pb-8 sm:pb-5 space-y-4">
           {/* Instruksi & Tombol Sample */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-300 font-medium">

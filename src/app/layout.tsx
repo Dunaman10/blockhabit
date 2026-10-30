@@ -14,11 +14,18 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "BlockHabit — Daily Bitcoin DCA & Habit Tracker",
-  description: "Build the Habit. Stack the Blocks. Harvest the Cycle. Catat micro-DCA Bitcoin harian, lacak streak, hitung rata-rata pengeluaran, dan pantau siklus Halving.",
+  description:
+    "Build the Habit. Stack the Blocks. Harvest the Cycle. Catat micro-DCA Bitcoin harian, lacak streak, hitung rata-rata pengeluaran, dan pantau siklus Halving.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/favicon.png", sizes: "64x64", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.png",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,

@@ -2,16 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Flame,
   BarChart2,
   Compass,
   History,
   Plus,
-  Sparkles,
-  Layers,
-  FileText,
-  Shield,
-  Share2,
 } from "lucide-react";
 
 import {
@@ -27,7 +21,6 @@ import {
 import {
   calculateAnalytics,
   recalculateStreak,
-  formatIdr,
 } from "@/lib/calculations";
 import {
   DEFAULT_BTC_PRICE_IDR,
@@ -48,7 +41,6 @@ import { BackupModal } from "@/components/BackupModal";
 export default function HomePage() {
   // 1. Data State
   const [storage, setStorage] = useState<BlockHabitStorage>(SAMPLE_STORAGE);
-  const [isClientLoaded, setIsClientLoaded] = useState(false);
 
   // 2. Market & Halving Data State
   const [ticker, setTicker] = useState<MarketTicker>({
@@ -89,7 +81,13 @@ export default function HomePage() {
     setClientDate(new Date());
     const loaded = loadStorageFromBrowser();
     setStorage(loaded);
-    setIsClientLoaded(true);
+
+    // Register PWA Service Worker for Android Home Screen installation
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .catch((err) => console.warn("SW registration skipped:", err));
+    }
 
     // Fetch Live Ticker
     fetch("/api/ticker")
@@ -131,7 +129,8 @@ export default function HomePage() {
 
     const updatedStreak = recalculateStreak(
       updatedTxList,
-      storage.streak.streakFreezesAvailable
+      storage.streak.streakFreezesAvailable,
+      clientDate
     );
 
     const newStorage: BlockHabitStorage = {
@@ -149,7 +148,8 @@ export default function HomePage() {
     const updatedTxList = storage.transactions.filter((tx) => tx.id !== id);
     const updatedStreak = recalculateStreak(
       updatedTxList,
-      storage.streak.streakFreezesAvailable
+      storage.streak.streakFreezesAvailable,
+      clientDate
     );
 
     const newStorage: BlockHabitStorage = {
@@ -166,7 +166,8 @@ export default function HomePage() {
     const combined = [...newTransactions, ...storage.transactions];
     const updatedStreak = recalculateStreak(
       combined,
-      storage.streak.streakFreezesAvailable
+      storage.streak.streakFreezesAvailable,
+      clientDate
     );
 
     const newStorage: BlockHabitStorage = {
@@ -192,7 +193,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090D16] text-slate-100 flex flex-col pb-24 selection:bg-[#F7931A] selection:text-black">
+    <div className="min-h-screen bg-[#090D16] text-slate-100 flex flex-col pb-28 selection:bg-[#F7931A] selection:text-black">
       {/* Mobile-First Header */}
       <Header
         streak={storage.streak}
@@ -205,51 +206,50 @@ export default function HomePage() {
         onOpenBackup={() => setIsBackupOpen(true)}
       />
 
-      {/* Main Responsive Body Container (Max 600px width for supreme mobile-first feel) */}
-      <main className="max-w-xl w-full mx-auto px-4 pt-3 space-y-5 flex-1">
-        {/* Navigation Tabs Pill Bar */}
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-slate-900/90 border border-slate-800">
+      {/* Main Responsive Body Container */}
+      <main className="max-w-xl w-full mx-auto px-3 sm:px-4 pt-2.5 space-y-3.5 flex-1">
+        {/* Navigation Tabs Pill Bar - 1 Baris Rapi di Mobile */}
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800">
           <button
             onClick={() => setActiveTab("dashboard")}
-            className={`py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "dashboard"
-                ? "bg-[#F7931A] text-black shadow-md shadow-[#F7931A]/20"
+                ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <BarChart2 className="w-3.5 h-3.5" />
+            <BarChart2 className="w-3.5 h-3.5 shrink-0" />
             <span>Dashboard</span>
           </button>
 
           <button
             onClick={() => setActiveTab("radar")}
-            className={`py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "radar"
-                ? "bg-[#F7931A] text-black shadow-md shadow-[#F7931A]/20"
+                ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Compass className="w-3.5 h-3.5" />
+            <Compass className="w-3.5 h-3.5 shrink-0" />
             <span>BTC Radar</span>
           </button>
 
           <button
             onClick={() => setActiveTab("riwayat")}
-            className={`py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "riwayat"
-                ? "bg-[#F7931A] text-black shadow-md shadow-[#F7931A]/20"
+                ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <History className="w-3.5 h-3.5" />
+            <History className="w-3.5 h-3.5 shrink-0" />
             <span>Riwayat ({storage.transactions.length})</span>
           </button>
         </div>
 
         {/* Tab 1: Dashboard View */}
         {activeTab === "dashboard" && (
-          <div className="space-y-4 animate-in fade-in duration-150">
-            {/* Gamifikasi Block Streak & Heatmap */}
+          <div className="space-y-3.5 animate-in fade-in duration-150">
             <StreakSection
               streak={storage.streak}
               transactions={storage.transactions}
@@ -261,7 +261,6 @@ export default function HomePage() {
               referenceDate={clientDate}
             />
 
-            {/* Average & Analytics Engine */}
             <AnalyticsSection
               analytics={analytics}
               transactions={storage.transactions}
@@ -272,12 +271,12 @@ export default function HomePage() {
 
         {/* Tab 2: Bitcoin Radar & Halving Info */}
         {activeTab === "radar" && (
-          <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="space-y-3.5 animate-in fade-in duration-150">
             <BitcoinRadar
               ticker={ticker}
               halving={halving}
               averageHabitTicket={analytics.averageHabitTicket}
-              onSelectQuickAction={(amount) => {
+              onSelectQuickAction={() => {
                 setEditingTransaction(null);
                 setIsLoggerOpen(true);
               }}
@@ -287,7 +286,7 @@ export default function HomePage() {
 
         {/* Tab 3: Riwayat Transaksi CRUD */}
         {activeTab === "riwayat" && (
-          <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="space-y-3.5 animate-in fade-in duration-150">
             <TransactionHistory
               transactions={storage.transactions}
               onEditTransaction={(tx) => {
@@ -304,17 +303,17 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* Floating 1-Tap CTA Bar (Thumb-Friendly on Smartphones) */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 p-3 bg-gradient-to-t from-[#090D16] via-[#090D16]/95 to-transparent backdrop-blur-sm pointer-events-auto">
-        <div className="max-w-xl mx-auto flex items-center gap-2">
+      {/* Floating 1-Tap CTA Bar with Comfortable Bottom & Side Margins */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 px-5 pt-3 pb-6 bg-gradient-to-t from-[#090D16] via-[#090D16]/95 to-transparent backdrop-blur-sm pointer-events-none">
+        <div className="max-w-md mx-auto pointer-events-auto">
           <button
             onClick={() => {
               setEditingTransaction(null);
               setIsLoggerOpen(true);
             }}
-            className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#F7931A] via-amber-500 to-[#F7931A] text-black font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#F7931A]/25 hover:brightness-110 active:scale-[0.98] transition-all"
+            className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#F7931A] via-amber-500 to-[#F7931A] text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#F7931A]/30 ring-1 ring-white/20 hover:brightness-110 active:scale-[0.98] transition-all whitespace-nowrap"
           >
-            <Plus className="w-5 h-5 stroke-[3]" />
+            <Plus className="w-4 h-4 stroke-[3] shrink-0" />
             <span>1-Tap Catat Beli Bitcoin (+1 Blok)</span>
           </button>
         </div>
