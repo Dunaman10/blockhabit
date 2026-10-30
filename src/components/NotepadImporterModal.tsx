@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, FileText, CheckCircle2, AlertTriangle, ArrowRight, Sparkles, Upload } from "lucide-react";
-import { parseNotepadText, convertParsedToTransactions, ParsedNotepadLine } from "@/lib/notepadParser";
+import { X, FileText, CheckCircle2, AlertTriangle, Sparkles, Upload } from "lucide-react";
+import {
+  parseNotepadText,
+  convertParsedToTransactions,
+  ParsedNotepadLine,
+} from "@/lib/notepadParser";
 import { HabitTransaction } from "@/types";
-import { formatIdr, formatSats } from "@/lib/calculations";
+import { formatIdr } from "@/lib/calculations";
 import { DEFAULT_BTC_PRICE_IDR } from "@/lib/constants";
 
 interface NotepadImporterModalProps {
@@ -12,6 +16,7 @@ interface NotepadImporterModalProps {
   onClose: () => void;
   onImportSuccess: (newTransactions: HabitTransaction[]) => void;
   currentBtcPrice: number;
+  historicalPrices?: Record<string, number>;
 }
 
 const SAMPLE_NOTEPAD_TEXT = `14/10/2026 - 9990 FLOQ
@@ -25,6 +30,7 @@ export function NotepadImporterModal({
   onClose,
   onImportSuccess,
   currentBtcPrice = DEFAULT_BTC_PRICE_IDR,
+  historicalPrices = {},
 }: NotepadImporterModalProps) {
   const [inputText, setInputText] = useState("");
   const [parsedRows, setParsedRows] = useState<ParsedNotepadLine[]>([]);
@@ -47,7 +53,11 @@ export function NotepadImporterModal({
 
   const handleCommitImport = () => {
     if (validRows.length === 0) return;
-    const transactions = convertParsedToTransactions(parsedRows, currentBtcPrice);
+    const transactions = convertParsedToTransactions(
+      parsedRows,
+      currentBtcPrice,
+      historicalPrices
+    );
     onImportSuccess(transactions);
     setInputText("");
     setParsedRows([]);
@@ -65,7 +75,9 @@ export function NotepadImporterModal({
             </div>
             <div>
               <h2 className="font-bold text-slate-100 text-sm">Notepad Bulk Importer</h2>
-              <p className="text-[11px] text-slate-400">Salin & tempel catatan lama dari Notepad HP-mu</p>
+              <p className="text-[11px] text-slate-400">
+                Otomatis mencocokkan harga BTC historis sesuai tanggal
+              </p>
             </div>
           </div>
           <button
@@ -77,7 +89,6 @@ export function NotepadImporterModal({
         </div>
 
         <div className="p-5 pb-8 sm:pb-5 space-y-4">
-          {/* Instruksi & Tombol Sample */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-300 font-medium">
               Tempel teks catatanmu di bawah ini:
@@ -92,7 +103,6 @@ export function NotepadImporterModal({
             </button>
           </div>
 
-          {/* Text Area */}
           <div className="relative">
             <textarea
               rows={5}
@@ -103,7 +113,6 @@ export function NotepadImporterModal({
             />
           </div>
 
-          {/* Ringkasan Ekstraksi */}
           {parsedRows.length > 0 && (
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs">
@@ -135,53 +144,56 @@ export function NotepadImporterModal({
             </div>
           )}
 
-          {/* Tabel Pratinjau Parsed Lines */}
           {parsedRows.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-slate-300">Pratinjau Hasil Ekstraksi:</p>
               <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                {parsedRows.map((row, idx) => (
-                  <div
-                    key={row.id || idx}
-                    className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
-                      row.isValid
-                        ? "bg-slate-900/60 border-slate-800 text-slate-200"
-                        : "bg-red-950/20 border-red-900/40 text-red-300"
-                    }`}
-                  >
-                    <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                          #{idx + 1}
-                        </span>
+                {parsedRows.map((row, idx) => {
+                  const matchedPrice = historicalPrices[row.dateKey] || currentBtcPrice;
+                  return (
+                    <div
+                      key={row.id || idx}
+                      className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                        row.isValid
+                          ? "bg-slate-900/60 border-slate-800 text-slate-200"
+                          : "bg-red-950/20 border-red-900/40 text-red-300"
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                            #{idx + 1}
+                          </span>
+                          {row.isValid ? (
+                            <span className="font-semibold text-slate-200">{row.dateStr}</span>
+                          ) : (
+                            <span className="font-mono text-red-400 truncate">{row.rawText}</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {row.isValid
+                            ? `Harga BTC: ${formatIdr(matchedPrice)}`
+                            : row.errorMessage}
+                        </p>
+                      </div>
+                      <div>
                         {row.isValid ? (
-                          <span className="font-semibold text-slate-200">{row.dateStr}</span>
+                          <span className="font-bold text-[#F7931A] whitespace-nowrap">
+                            {formatIdr(row.amountIdr)}
+                          </span>
                         ) : (
-                          <span className="font-mono text-red-400 truncate">{row.rawText}</span>
+                          <span className="text-[10px] uppercase font-bold text-red-400 whitespace-nowrap">
+                            Error
+                          </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {row.isValid ? row.note || "Import Notepad" : row.errorMessage}
-                      </p>
                     </div>
-                    <div>
-                      {row.isValid ? (
-                        <span className="font-bold text-[#F7931A] whitespace-nowrap">
-                          {formatIdr(row.amountIdr)}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] uppercase font-bold text-red-400 whitespace-nowrap">
-                          Error
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Tombol Aksi Impor */}
           <button
             type="button"
             disabled={validRows.length === 0}

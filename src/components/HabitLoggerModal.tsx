@@ -1,17 +1,18 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Sparkles, Plus, Clock, ChevronDown, ChevronUp, Check, Layers } from "lucide-react";
+import { X, Clock, ChevronDown, ChevronUp, Check, Layers } from "lucide-react";
 import confetti from "canvas-confetti";
 import { HabitTransaction } from "@/types";
 import { QUICK_NOMINALS, DEFAULT_BTC_PRICE_IDR } from "@/lib/constants";
-import { formatIdr, formatSats, formatBtc } from "@/lib/calculations";
+import { formatIdr, formatSats, getLocalDateString } from "@/lib/calculations";
 
 interface HabitLoggerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveTransaction: (tx: HabitTransaction) => void;
   currentBtcPrice: number;
+  historicalPrices?: Record<string, number>;
   initialData?: HabitTransaction | null;
 }
 
@@ -20,16 +21,16 @@ export function HabitLoggerModal({
   onClose,
   onSaveTransaction,
   currentBtcPrice = DEFAULT_BTC_PRICE_IDR,
+  historicalPrices = {},
   initialData = null,
 }: HabitLoggerModalProps) {
-  // Input fields
   const [dateInput, setDateInput] = useState("");
   const [amountIdr, setAmountIdr] = useState<number>(10000);
   const [customAmountText, setCustomAmountText] = useState("10000");
 
-  // Advanced / Exchange Receipt Accordion
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [executionPrice, setExecutionPrice] = useState<number>(currentBtcPrice);
+  const [isManualPrice, setIsManualPrice] = useState(false);
   const [netReceivedIdr, setNetReceivedIdr] = useState<number | undefined>(undefined);
   const [manualBtcAmount, setManualBtcAmount] = useState<string>("");
   const [note, setNote] = useState<string>("Order Market FLOQ");
@@ -40,12 +41,12 @@ export function HabitLoggerModal({
       setAmountIdr(initialData.amountIdr);
       setCustomAmountText(initialData.amountIdr.toString());
       setExecutionPrice(initialData.btcPriceAtBuy || currentBtcPrice);
+      setIsManualPrice(true);
       setNetReceivedIdr(initialData.netValueIdr);
-      setManualBtcAmount(initialData.btcAmount ? initialData.btcAmount.toString() : "");
+      setManualBtcAmount(initialData.btcAmount ? initialData.btcAmount.toFixed(8) : "");
       setNote(initialData.note || "");
       setShowAdvanced(true);
     } else {
-      // Waktu saat ini format YYYY-MM-DDTHH:mm
       const now = new Date();
       const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
         .toISOString()
@@ -54,6 +55,7 @@ export function HabitLoggerModal({
       setAmountIdr(10000);
       setCustomAmountText("10000");
       setExecutionPrice(currentBtcPrice);
+      setIsManualPrice(false);
       setNetReceivedIdr(undefined);
       setManualBtcAmount("");
       setNote("Order Market FLOQ");
@@ -61,11 +63,25 @@ export function HabitLoggerModal({
     }
   }, [isOpen, initialData, currentBtcPrice]);
 
+  // Otomatis sesuaikan harga BTC dengan harga historis jika pengguna memilih tanggal backdate
+  const handleDateChange = (newDateVal: string) => {
+    setDateInput(newDateVal);
+    if (!isManualPrice && newDateVal) {
+      const dateKey = newDateVal.slice(0, 10); // YYYY-MM-DD
+      const todayKey = getLocalDateString(new Date());
+      if (dateKey === todayKey) {
+        setExecutionPrice(currentBtcPrice);
+      } else if (historicalPrices[dateKey]) {
+        setExecutionPrice(historicalPrices[dateKey]);
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
-  // Kalkulasi estimasi BTC & Satoshi
   const activeBtcPrice = executionPrice > 0 ? executionPrice : currentBtcPrice;
-  const effectiveNetIdr = netReceivedIdr !== undefined && netReceivedIdr > 0 ? netReceivedIdr : amountIdr;
+  const effectiveNetIdr =
+    netReceivedIdr !== undefined && netReceivedIdr > 0 ? netReceivedIdr : amountIdr;
 
   let calculatedBtc: number;
   let calculatedSats: number;
@@ -74,15 +90,16 @@ export function HabitLoggerModal({
     calculatedBtc = parseFloat(manualBtcAmount);
     calculatedSats = Math.round(calculatedBtc * 100_000_000);
   } else {
-    calculatedBtc = parseFloat((effectiveNetIdr / activeBtcPrice).toFixed(8));
-    calculatedSats = Math.round(calculatedBtc * 100_000_000);
+    // Pembulatan ke bawah (floor) sesuai standar exchange ritel
+    const rawSats = (effectiveNetIdr / activeBtcPrice) * 100_000_000;
+    calculatedSats = Math.floor(rawSats);
+    calculatedBtc = calculatedSats / 100_000_000;
   }
 
   const handleSelectQuick = (nominal: number) => {
     setAmountIdr(nominal);
     setCustomAmountText(nominal.toString());
     if (netReceivedIdr !== undefined) {
-      // Sesuaikan pembulatan fee nominal bersih jika ada
       setNetReceivedIdr(nominal > 12 ? nominal - 12 : nominal);
     }
   };
@@ -98,7 +115,6 @@ export function HabitLoggerModal({
     e.preventDefault();
     if (amountIdr <= 0) return;
 
-    // Pastikan tanggal valid
     const finalDate = dateInput ? new Date(dateInput).toISOString() : new Date().toISOString();
 
     const newTx: HabitTransaction = {
@@ -114,7 +130,6 @@ export function HabitLoggerModal({
 
     onSaveTransaction(newTx);
 
-    // Efek Konfeti Streak
     try {
       confetti({
         particleCount: 40,
@@ -123,11 +138,18 @@ export function HabitLoggerModal({
         colors: ["#F7931A", "#F59E0B", "#10B981"],
       });
     } catch {
-      // abaikan jika tidak didukung
+      // ignore
     }
 
     onClose();
   };
+
+  const selectedDateKey = dateInput ? dateInput.slice(0, 10) : "";
+  const isHistoricalPriceUsed =
+    !isManualPrice &&
+    selectedDateKey &&
+    selectedDateKey !== getLocalDateString(new Date()) &&
+    Boolean(historicalPrices[selectedDateKey]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -140,7 +162,7 @@ export function HabitLoggerModal({
             </div>
             <div>
               <h2 className="font-bold text-slate-100 text-sm">
-                {initialData ? "Ubah Catatan DCA" : "Catat Pembelian Bitcoin Hari Ini"}
+                {initialData ? "Ubah Catatan DCA" : "Catat Pembelian Bitcoin"}
               </h2>
               <p className="text-[11px] text-slate-400">Tambah 1 Blok ke rantai kebiasaanmu</p>
             </div>
@@ -154,7 +176,7 @@ export function HabitLoggerModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 pb-8 sm:pb-5 space-y-4">
-          {/* Tanggal & Waktu (Backdate support) */}
+          {/* Tanggal & Waktu (Backdate support + Auto Historical Price) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -163,7 +185,7 @@ export function HabitLoggerModal({
             <input
               type="datetime-local"
               value={dateInput}
-              onChange={(e) => setDateInput(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-[#F7931A]"
               required
             />
@@ -214,11 +236,11 @@ export function HabitLoggerModal({
             </div>
           </div>
 
-          {/* Live Satoshi Conversion Banner */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#F7931A]/10 via-amber-500/10 to-transparent border border-[#F7931A]/20 flex items-center justify-between">
-            <div>
+          {/* Live / Historical Satoshi Conversion Banner */}
+          <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#F7931A]/10 via-amber-500/10 to-transparent border border-[#F7931A]/20 flex items-center justify-between gap-2">
+            <div className="min-w-0">
               <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                Perolehan Satoshi (Live Price)
+                Perolehan Satoshi
               </p>
               <div className="flex items-baseline gap-1.5 mt-0.5">
                 <span className="text-lg font-black text-[#F7931A]">
@@ -229,9 +251,11 @@ export function HabitLoggerModal({
                 </span>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 block">Harga Acuan</span>
-              <span className="text-xs font-semibold text-slate-300">
+            <div className="text-right shrink-0">
+              <span className="text-[10px] text-slate-400 block">
+                {isHistoricalPriceUsed ? "Harga Historis Tanggal Ini" : "Harga Beli Acuan"}
+              </span>
+              <span className="text-xs font-semibold text-slate-200">
                 {formatIdr(activeBtcPrice)}
               </span>
             </div>
@@ -244,20 +268,29 @@ export function HabitLoggerModal({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 font-medium"
             >
-              {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              {showAdvanced ? "Sembunyikan Detail Struk Exchange" : "Sesuaikan Struk Exchange (Opsional: Fee, Harga Eksekusi, Catatan)"}
+              {showAdvanced ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+              {showAdvanced
+                ? "Sembunyikan Detail Struk FLOQ"
+                : "Sesuaikan Struk FLOQ (Harga Beli, BTC Diterima, Catatan)"}
             </button>
 
             {showAdvanced && (
               <div className="mt-3 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3 animate-in slide-in-from-top-2 duration-150">
                 <div>
                   <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                    Harga Eksekusi BTC (Rp)
+                    Harga Eksekusi BTC saat Beli (Rp)
                   </label>
                   <input
                     type="number"
                     value={executionPrice}
-                    onChange={(e) => setExecutionPrice(parseFloat(e.target.value) || currentBtcPrice)}
+                    onChange={(e) => {
+                      setIsManualPrice(true);
+                      setExecutionPrice(parseFloat(e.target.value) || currentBtcPrice);
+                    }}
                     placeholder="1493000000"
                     className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-[#F7931A]"
                   />
@@ -280,7 +313,7 @@ export function HabitLoggerModal({
                   </div>
                   <div>
                     <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                      Jumlah BTC Diterima
+                      Jumlah BTC Diterima (Struk)
                     </label>
                     <input
                       type="text"
@@ -300,7 +333,7 @@ export function HabitLoggerModal({
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="Order Market FLOQ / Pintu / Indodax"
+                    placeholder="Order Market FLOQ"
                     className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-[#F7931A]"
                   />
                 </div>

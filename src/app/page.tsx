@@ -21,6 +21,7 @@ import {
 import {
   calculateAnalytics,
   recalculateStreak,
+  getLocalDateString,
 } from "@/lib/calculations";
 import {
   DEFAULT_BTC_PRICE_IDR,
@@ -42,7 +43,7 @@ export default function HomePage() {
   // 1. Data State (Starts completely fresh from 0)
   const [storage, setStorage] = useState<BlockHabitStorage>(INITIAL_STORAGE);
 
-  // 2. Market & Halving Data State
+  // 2. Market, Historical & Halving Data State
   const [ticker, setTicker] = useState<MarketTicker>({
     priceIdr: DEFAULT_BTC_PRICE_IDR,
     change24h: 1.25,
@@ -51,6 +52,8 @@ export default function HomePage() {
     lastUpdated: "2026-10-28T00:00:00.000Z",
     source: "Memuat Data...",
   });
+
+  const [historicalPrices, setHistoricalPrices] = useState<Record<string, number>>({});
 
   const [halving, setHalving] = useState<HalvingData>({
     currentBlock: 882000,
@@ -97,6 +100,54 @@ export default function HomePage() {
       })
       .catch((err) => console.warn("Gagal memuat ticker:", err));
 
+    // Fetch Historical Daily Prices & Auto-Fix Past Transactions that used Today's Price
+    fetch("/api/history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.priceByDate) {
+          const priceMap: Record<string, number> = data.priceByDate;
+          setHistoricalPrices(priceMap);
+
+          // Jika ada transaksi masa lalu yang semuanya memakai harga beli yang sama (akibat import/backdate tanpa harga historis),
+          // otomatis sesuaikan dengan harga BTC historis pada masing-masing tanggal!
+          const currentLoaded = loadStorageFromBrowser();
+          if (currentLoaded.transactions.length > 1) {
+            const uniquePrices = new Set(
+              currentLoaded.transactions.map((t) => Math.round(t.btcPriceAtBuy))
+            );
+            if (uniquePrices.size <= 2) {
+              let changed = false;
+              const updatedTxs = currentLoaded.transactions.map((tx) => {
+                const dateKey = getLocalDateString(tx.date);
+                const histPrice = priceMap[dateKey];
+                if (histPrice && histPrice > 0 && Math.abs(tx.btcPriceAtBuy - histPrice) > 1000) {
+                  changed = true;
+                  const netIdr = tx.netValueIdr ?? tx.amountIdr;
+                  const sats = Math.floor((netIdr / histPrice) * 100_000_000);
+                  return {
+                    ...tx,
+                    btcPriceAtBuy: histPrice,
+                    satsAmount: sats,
+                    btcAmount: sats / 100_000_000,
+                  };
+                }
+                return tx;
+              });
+
+              if (changed) {
+                const syncedStorage: BlockHabitStorage = {
+                  ...currentLoaded,
+                  transactions: updatedTxs,
+                };
+                setStorage(syncedStorage);
+                saveStorageToBrowser(syncedStorage);
+              }
+            }
+          }
+        }
+      })
+      .catch((err) => console.warn("Gagal memuat history harga:", err));
+
     // Fetch Halving Data
     fetch("/api/halving")
       .then((res) => res.json())
@@ -115,6 +166,76 @@ export default function HomePage() {
   // Analytics calculation
   const currentPrice = ticker.priceIdr || DEFAULT_BTC_PRICE_IDR;
   const analytics = calculateAnalytics(storage.transactions, currentPrice, clientDate);
+
+  // Sync Historical Prices Manually
+  const handleSyncHistoricalPrices = () => {
+    if (!historicalPrices || Object.keys(historicalPrices).length === 0) return;
+    const updatedTxs = storage.transactions.map((tx) => {
+      const dateKey = getLocalDateString(tx.date);
+      const histPrice = historicalPrices[dateKey];
+      if (histPrice && histPrice > 0) {
+        const netIdr = tx.netValueIdr ?? tx.amountIdr;
+        const sats = Math.floor((netIdr / histPrice) * 100_000_000);
+        return {
+          ...tx,
+          btcPriceAtBuy: histPrice,
+          satsAmount: sats,
+          btcAmount: sats / 100_000_000,
+        };
+      }
+      return tx;
+    });
+
+    updateStorage({
+      ...storage,
+      transactions: updatedTxs,
+    });
+  };
+
+  // Calibrate Total BTC to match FLOQ exactly
+  const handleCalibrateTotalBtc = (targetTotalBtc: number) => {
+    if (storage.transactions.length === 0 || targetTotalBtc <= 0) return;
+    const totalCapital = storage.transactions.reduce((acc, tx) => acc + tx.amountIdr, 0);
+    if (totalCapital <= 0) return;
+
+    const impliedAvgPrice = Math.round(totalCapital / targetTotalBtc);
+    const updatedTxs = storage.transactions.map((tx) => {
+      const weight = tx.amountIdr / totalCapital;
+      const txBtc = parseFloat((targetTotalBtc * weight).toFixed(8));
+      const txSats = Math.round(txBtc * 100_000_000);
+      return {
+        ...tx,
+        btcPriceAtBuy: impliedAvgPrice,
+        btcAmount: txBtc,
+        satsAmount: txSats,
+      };
+    });
+
+    updateStorage({
+      ...storage,
+      transactions: updatedTxs,
+    });
+  };
+
+  // Calibrate Average Buy Price to match FLOQ exactly
+  const handleCalibrateAvgBuyPrice = (targetAvgPriceIdr: number) => {
+    if (storage.transactions.length === 0 || targetAvgPriceIdr <= 0) return;
+    const updatedTxs = storage.transactions.map((tx) => {
+      const netIdr = tx.netValueIdr ?? tx.amountIdr;
+      const sats = Math.floor((netIdr / targetAvgPriceIdr) * 100_000_000);
+      return {
+        ...tx,
+        btcPriceAtBuy: targetAvgPriceIdr,
+        satsAmount: sats,
+        btcAmount: sats / 100_000_000,
+      };
+    });
+
+    updateStorage({
+      ...storage,
+      transactions: updatedTxs,
+    });
+  };
 
   // Transaction Handler: Save or Update
   const handleSaveTransaction = (tx: HabitTransaction) => {
@@ -265,6 +386,9 @@ export default function HomePage() {
               analytics={analytics}
               transactions={storage.transactions}
               currentBtcPrice={currentPrice}
+              onSyncHistoricalPrices={handleSyncHistoricalPrices}
+              onCalibrateTotalBtc={handleCalibrateTotalBtc}
+              onCalibrateAvgBuyPrice={handleCalibrateAvgBuyPrice}
             />
           </div>
         )}
@@ -328,6 +452,7 @@ export default function HomePage() {
         }}
         onSaveTransaction={handleSaveTransaction}
         currentBtcPrice={currentPrice}
+        historicalPrices={historicalPrices}
         initialData={editingTransaction}
       />
 
@@ -336,6 +461,7 @@ export default function HomePage() {
         onClose={() => setIsImporterOpen(false)}
         onImportSuccess={handleBulkImport}
         currentBtcPrice={currentPrice}
+        historicalPrices={historicalPrices}
       />
 
       <ShareCardModal

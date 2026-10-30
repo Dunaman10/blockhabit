@@ -1,10 +1,12 @@
 import { HabitTransaction } from "@/types";
+import { getLocalDateString } from "./calculations";
 
 export interface ParsedNotepadLine {
   id: string;
   rawText: string;
   dateStr: string;
   isoDate: string;
+  dateKey: string; // YYYY-MM-DD
   amountIdr: number;
   note: string;
   isValid: boolean;
@@ -22,7 +24,10 @@ export interface ParsedNotepadLine {
 export function parseNotepadText(text: string): ParsedNotepadLine[] {
   if (!text || text.trim() === "") return [];
 
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
   const results: ParsedNotepadLine[] = [];
 
   const monthNamesId: Record<string, number> = {
@@ -46,19 +51,20 @@ export function parseNotepadText(text: string): ParsedNotepadLine[] {
     let errorMessage: string | undefined;
     let dateStr = "";
     let isoDate = "";
+    let dateKey = "";
     let amountIdr = 0;
     let note = "Import Notepad";
 
     try {
-      // 1. Ekstrak pola tanggal:
-      // Pola A: YYYY-MM-DD atau YYYY/MM/DD
-      const isoDateMatch = line.match(/\b(202\d)[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b/);
-
-      // Pola B: DD/MM/YYYY atau DD-MM-YYYY
-      const dmyDateMatch = line.match(/\b(0?[1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](202\d)\b/);
-
-      // Pola C: DD [NamaBulan] YYYY (misal 15 Okt 2026)
-      const textDateMatch = line.match(/\b(0?[1-9]|[12]\d|3[01])\s+([A-Za-z]{3,9})\s+(202\d)\b/i);
+      const isoDateMatch = line.match(
+        /\b(202\d)[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b/
+      );
+      const dmyDateMatch = line.match(
+        /\b(0?[1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](202\d)\b/
+      );
+      const textDateMatch = line.match(
+        /\b(0?[1-9]|[12]\d|3[01])\s+([A-Za-z]{3,9})\s+(202\d)\b/i
+      );
 
       let parsedDate: Date | null = null;
       let matchedDateSubstring = "";
@@ -90,17 +96,14 @@ export function parseNotepadText(text: string): ParsedNotepadLine[] {
           year: "numeric",
         });
         isoDate = parsedDate.toISOString();
+        dateKey = getLocalDateString(parsedDate);
 
-        // 2. Ekstrak nominal uang dari sisa baris
-        // Hapus bagian tanggal dari teks agar tidak tertukar dengan angka tahun/tanggal
         const remainingText = line.replace(matchedDateSubstring, "").trim();
-
-        // Cari pola angka rupiah seperti: "Rp 10.000", "9990", "15,000", "50000"
-        // Regex menangkap angka yang mungkin mengandung titik/koma sebagai ribuan
-        const amountMatch = remainingText.match(/(?:rp\.?|idr)?\s*(\d{1,3}(?:[.,]\d{3})*|\d{4,9})\b/i);
+        const amountMatch = remainingText.match(
+          /(?:rp\.?|idr)?\s*(\d{1,3}(?:[.,]\d{3})*|\d{4,9})\b/i
+        );
 
         if (amountMatch) {
-          // Bersihkan titik dan koma ribuan
           const rawNum = amountMatch[1].replace(/[.,]/g, "");
           const num = parseInt(rawNum, 10);
 
@@ -108,7 +111,6 @@ export function parseNotepadText(text: string): ParsedNotepadLine[] {
             amountIdr = num;
             isValid = true;
 
-            // Sisa teks di luar angka dan tanggal dijadikan catatan jika ada
             const remainingNote = remainingText
               .replace(amountMatch[0], "")
               .replace(/[-:,;]/g, " ")
@@ -135,6 +137,7 @@ export function parseNotepadText(text: string): ParsedNotepadLine[] {
       rawText,
       dateStr,
       isoDate,
+      dateKey,
       amountIdr,
       note,
       isValid,
@@ -146,17 +149,25 @@ export function parseNotepadText(text: string): ParsedNotepadLine[] {
 }
 
 /**
- * Konversi baris valid hasil parse menjadi HabitTransaction lengkap dengan btcPrice
+ * Konversi baris valid hasil parse menjadi HabitTransaction lengkap dengan harga historis pada tanggal tersebut
  */
 export function convertParsedToTransactions(
   parsedLines: ParsedNotepadLine[],
-  btcPrice: number
+  fallbackBtcPrice: number,
+  historicalPrices: Record<string, number> = {}
 ): HabitTransaction[] {
   return parsedLines
     .filter((item) => item.isValid)
     .map((item, idx) => {
-      const btcAmount = parseFloat((item.amountIdr / btcPrice).toFixed(8));
-      const satsAmount = Math.round(btcAmount * 100_000_000);
+      // Gunakan harga historis BTC/IDR pada tanggal transaksi jika tersedia
+      const historicalPrice = historicalPrices[item.dateKey];
+      const btcPrice = historicalPrice && historicalPrice > 0 ? historicalPrice : fallbackBtcPrice;
+
+      // Hitung jumlah BTC presisi 8 desimal (pembulatan ke bawah seperti exchange pada umumnya)
+      const rawBtc = item.amountIdr / btcPrice;
+      const btcAmount = Math.floor(rawBtc * 100_000_000) / 100_000_000;
+      const satsAmount = Math.floor(rawBtc * 100_000_000);
+
       return {
         id: `tx-import-${Date.now()}-${idx}`,
         date: item.isoDate,
