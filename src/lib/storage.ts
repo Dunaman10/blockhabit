@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BlockHabitStorage, HabitTransaction } from "@/types";
-import { STORAGE_KEY, INITIAL_STORAGE, SAMPLE_STORAGE } from "./constants";
+import { STORAGE_KEY, INITIAL_STORAGE } from "./constants";
 import { recalculateStreak } from "./calculations";
 
 // Zod Schema Validation
@@ -36,32 +36,56 @@ export const BlockHabitStorageSchema = z.object({
 });
 
 /**
- * Muat data dari localStorage dengan validasi Zod
+ * Muat data murni dari localStorage dengan validasi Zod (mulai dari 0 jika belum ada data)
  */
 export function loadStorageFromBrowser(): BlockHabitStorage {
   if (typeof window === "undefined") {
-    return SAMPLE_STORAGE;
+    return INITIAL_STORAGE;
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      // Jika pertama kali dibuka, berikan SAMPLE_STORAGE agar pengguna langsung melihat tampilan aktif
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_STORAGE));
-      return SAMPLE_STORAGE;
+      const freshData: BlockHabitStorage = {
+        ...INITIAL_STORAGE,
+        profile: {
+          ...INITIAL_STORAGE.profile,
+          startDate: new Date().toISOString(),
+        },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(freshData));
+      return freshData;
     }
 
     const parsed = JSON.parse(raw);
     const validated = BlockHabitStorageSchema.safeParse(parsed);
 
     if (validated.success) {
+      // Bersihkan otomatis jika masih ada sisa transaksi dummy lama ("demo-tx-*")
+      const hasLegacyDemo = validated.data.transactions.some((tx) =>
+        tx.id.startsWith("demo-tx-")
+      );
+      if (hasLegacyDemo) {
+        const realTransactions = validated.data.transactions.filter(
+          (tx) => !tx.id.startsWith("demo-tx-")
+        );
+        const recalculated = recalculateStreak(realTransactions, 0, new Date());
+        const cleanedData: BlockHabitStorage = {
+          ...validated.data,
+          transactions: realTransactions,
+          streak: recalculated,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanedData));
+        return cleanedData;
+      }
+
       return validated.data;
     } else {
-      console.warn("Storage schema validation warning, falling back to initial data:", validated.error);
-      return {
-        ...INITIAL_STORAGE,
-        transactions: Array.isArray(parsed?.transactions) ? parsed.transactions : [],
-      };
+      console.warn(
+        "Storage schema validation warning, falling back to initial data:",
+        validated.error
+      );
+      return INITIAL_STORAGE;
     }
   } catch (err) {
     console.error("Gagal membaca localStorage:", err);
@@ -148,7 +172,7 @@ export async function parseUploadedJsonFile(file: File): Promise<BlockHabitStora
   // Jika file hanya berisi array transaksi
   if (Array.isArray(parsed)) {
     const validatedTx = z.array(HabitTransactionSchema).parse(parsed);
-    const updatedStreak = recalculateStreak(validatedTx, 1);
+    const updatedStreak = recalculateStreak(validatedTx, 0, new Date());
     return {
       ...INITIAL_STORAGE,
       transactions: validatedTx,

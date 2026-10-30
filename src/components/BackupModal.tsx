@@ -3,12 +3,10 @@
 import React, { useRef, useState } from "react";
 import {
   X,
-  Download,
   Upload,
   FileSpreadsheet,
   FileCode,
   RotateCcw,
-  Sparkles,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -16,8 +14,7 @@ import {
 } from "lucide-react";
 import { BlockHabitStorage } from "@/types";
 import { exportToJsonFile, exportToCsvFile, parseUploadedJsonFile } from "@/lib/storage";
-import { SAMPLE_STORAGE, INITIAL_STORAGE } from "@/lib/constants";
-import { formatDateTime } from "@/lib/calculations";
+import { INITIAL_STORAGE } from "@/lib/constants";
 
 interface BackupModalProps {
   isOpen: boolean;
@@ -75,21 +72,20 @@ export function BackupModal({
     }
   };
 
-  const handleLoadSample = () => {
-    if (confirm("Muat data simulasi demo (14 hari streak & transaksi realistis)?")) {
-      onRestoreData(SAMPLE_STORAGE);
-      setImportStatus("Data demo berhasil dimuat!");
-      setTimeout(() => {
-        setImportStatus(null);
-        onClose();
-      }, 1000);
-    }
-  };
-
   const handleResetData = () => {
-    if (confirm("Yakin ingin mengosongkan seluruh data? Pastikan kamu sudah mengunduh file backup.")) {
-      onRestoreData(INITIAL_STORAGE);
-      setImportStatus("Data berhasil direset.");
+    if (
+      confirm(
+        "Yakin ingin mereset seluruh data ke 0? Pastikan kamu sudah mengunduh file backup jika diperlukan."
+      )
+    ) {
+      onRestoreData({
+        ...INITIAL_STORAGE,
+        profile: {
+          ...INITIAL_STORAGE.profile,
+          startDate: new Date().toISOString(),
+        },
+      });
+      setImportStatus("Data berhasil direset ke 0.");
       setTimeout(() => {
         setImportStatus(null);
         onClose();
@@ -118,7 +114,7 @@ export function BackupModal({
             </div>
             <div>
               <h2 className="font-bold text-slate-100 text-sm">Backup, Restore & Pengaturan</h2>
-              <p className="text-[11px] text-slate-400">Data tersimpan aman di browser (localStorage)</p>
+              <p className="text-[11px] text-slate-400">Data tersimpan murni di browser (localStorage)</p>
             </div>
           </div>
           <button
@@ -244,22 +240,14 @@ export function BackupModal({
             </button>
           </div>
 
-          {/* Reset & Demo Section */}
-          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-            <button
-              onClick={handleLoadSample}
-              className="text-[#F7931A] hover:underline flex items-center gap-1 font-semibold"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Muat Data Demo (14 Hari Streak)</span>
-            </button>
-
+          {/* Reset Section */}
+          <div className="pt-2 border-t border-slate-800 flex items-center justify-end text-xs">
             <button
               onClick={handleResetData}
               className="text-rose-400 hover:underline flex items-center gap-1 font-semibold"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Kosongkan Data</span>
+              <span>Reset Semua Data ke 0</span>
             </button>
           </div>
         </div>

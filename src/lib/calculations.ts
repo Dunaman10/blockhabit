@@ -87,7 +87,7 @@ export function getLocalDateString(dateInput: Date | string = new Date()): strin
  */
 export function recalculateStreak(
   transactions: HabitTransaction[],
-  currentFreezes: number = 1,
+  currentFreezes: number = 0,
   referenceDate: Date = new Date("2026-10-28T00:00:00.000Z")
 ): StreakMetadata {
   if (!transactions || transactions.length === 0) {
@@ -95,7 +95,7 @@ export function recalculateStreak(
       currentStreak: 0,
       longestStreak: 0,
       lastLoggedDate: "",
-      streakFreezesAvailable: currentFreezes,
+      streakFreezesAvailable: 0,
     };
   }
 

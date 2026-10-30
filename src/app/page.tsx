@@ -25,7 +25,7 @@ import {
 import {
   DEFAULT_BTC_PRICE_IDR,
   HALVING_TARGET_BLOCK,
-  SAMPLE_STORAGE,
+  INITIAL_STORAGE,
 } from "@/lib/constants";
 
 import { Header } from "@/components/Header";
@@ -39,8 +39,8 @@ import { ShareCardModal } from "@/components/ShareCardModal";
 import { BackupModal } from "@/components/BackupModal";
 
 export default function HomePage() {
-  // 1. Data State
-  const [storage, setStorage] = useState<BlockHabitStorage>(SAMPLE_STORAGE);
+  // 1. Data State (Starts completely fresh from 0)
+  const [storage, setStorage] = useState<BlockHabitStorage>(INITIAL_STORAGE);
 
   // 2. Market & Halving Data State
   const [ticker, setTicker] = useState<MarketTicker>({
