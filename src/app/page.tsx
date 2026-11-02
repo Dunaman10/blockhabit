@@ -6,6 +6,7 @@ import {
   Compass,
   History,
   Plus,
+  Target,
 } from "lucide-react";
 
 import {
@@ -33,6 +34,7 @@ import { Header } from "@/components/Header";
 import { StreakSection } from "@/components/StreakSection";
 import { AnalyticsSection } from "@/components/AnalyticsSection";
 import { BitcoinRadar } from "@/components/BitcoinRadar";
+import { TakeProfitPlanner } from "@/components/TakeProfitPlanner";
 import { TransactionHistory } from "@/components/TransactionHistory";
 import { HabitLoggerModal } from "@/components/HabitLoggerModal";
 import { NotepadImporterModal } from "@/components/NotepadImporterModal";
@@ -65,8 +67,8 @@ export default function HomePage() {
     cyclePhase: "Akumulasi",
   });
 
-  // 3. Navigation Tab: "dashboard" | "radar" | "riwayat"
-  const [activeTab, setActiveTab] = useState<"dashboard" | "radar" | "riwayat">("dashboard");
+  // 3. Navigation Tab: "dashboard" | "radar" | "exitplan" | "riwayat"
+  const [activeTab, setActiveTab] = useState<"dashboard" | "radar" | "exitplan" | "riwayat">("dashboard");
 
   // 4. Modals State
   const [isLoggerOpen, setIsLoggerOpen] = useState(false);
@@ -330,10 +332,10 @@ export default function HomePage() {
       {/* Main Responsive Body Container */}
       <main className="max-w-xl w-full mx-auto px-3 sm:px-4 pt-2.5 space-y-3.5 flex-1">
         {/* Navigation Tabs Pill Bar - 1 Baris Rapi di Mobile */}
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800">
+        <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800">
           <button
             onClick={() => setActiveTab("dashboard")}
-            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
+            className={`py-2 px-1.5 rounded-lg text-[10px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "dashboard"
                 ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
@@ -345,19 +347,31 @@ export default function HomePage() {
 
           <button
             onClick={() => setActiveTab("radar")}
-            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
+            className={`py-2 px-1.5 rounded-lg text-[10px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "radar"
                 ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Compass className="w-3.5 h-3.5 shrink-0" />
-            <span>BTC Radar</span>
+            <span>Radar</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("exitplan")}
+            className={`py-2 px-1.5 rounded-lg text-[10px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
+              activeTab === "exitplan"
+                ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Target className="w-3.5 h-3.5 shrink-0" />
+            <span>Exit 2029</span>
           </button>
 
           <button
             onClick={() => setActiveTab("riwayat")}
-            className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
+            className={`py-2 px-1.5 rounded-lg text-[10px] sm:text-xs font-extrabold flex items-center justify-center gap-1 whitespace-nowrap transition-all ${
               activeTab === "riwayat"
                 ? "bg-[#F7931A] text-black shadow-sm shadow-[#F7931A]/20"
                 : "text-slate-400 hover:text-slate-200"
@@ -404,6 +418,19 @@ export default function HomePage() {
                 setEditingTransaction(null);
                 setIsLoggerOpen(true);
               }}
+            />
+          </div>
+        )}
+
+        {/* Tab 3: Take-Profit Exit Planner 2029 */}
+        {activeTab === "exitplan" && (
+          <div className="space-y-3.5 animate-in fade-in duration-150">
+            <TakeProfitPlanner
+              currentPrice={currentPrice}
+              totalBtc={analytics.totalBtc}
+              totalCapitalDeployed={analytics.totalCapitalDeployed}
+              averageBuyPrice={analytics.averageBuyPrice}
+              floatingPnlPercent={analytics.floatingPnlPercent}
             />
           </div>
         )}
