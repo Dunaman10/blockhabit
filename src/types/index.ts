@@ -19,6 +19,13 @@ export interface StreakMetadata {
   streakFreezesAvailable: number; // Kuota pelindung streak
 }
 
+export interface FloqSyncConfig {
+  priceSpreadPercent: number;  // Rasio penyesuaian harga FLOQ vs harga live Indodax (%)
+  cashBalanceIdr?: number;     // Opsional: sisa saldo tunai IDR mengendap di wallet FLOQ
+  lastSyncedAt?: string;       // ISO timestamp terakhir kali disamakan dengan FLOQ
+  lockedCalibration?: boolean; // Kunci kalibrasi agar tidak tertimpa auto-sync harga historis saat reload
+}
+
 export interface BlockHabitStorage {
   profile: {
     startDate: string;
@@ -26,6 +33,7 @@ export interface BlockHabitStorage {
     dailyFloorIdr: number;  // Default: 10000
     exchangeName: string;   // Default: "FLOQ"
     hideBalanceOnShare: boolean;
+    floqSync?: FloqSyncConfig;
   };
   streak: StreakMetadata;
   transactions: HabitTransaction[];
@@ -34,6 +42,8 @@ export interface BlockHabitStorage {
 
 export interface MarketTicker {
   priceIdr: number;
+  buyPriceIdr?: number;     // Bid / harga jual instan di pasar
+  sellPriceIdr?: number;    // Ask / harga beli instan di pasar
   change24h: number;
   high24h: number;
   low24h: number;
@@ -66,7 +76,9 @@ export interface AnalyticsSummary {
   totalBtc: number;               // Saldo BTC tersisa saat ini
   totalSats: number;              // Saldo Satoshi tersisa saat ini
   averageBuyPrice: number;        // Rata-rata harga beli BTC yang tersisa
-  currentPortfolioValue: number;
+  currentPortfolioValue: number;  // Nilai aset BTC saat ini dalam IDR
+  cashBalanceIdr: number;         // Saldo tunai IDR mengendap di exchange (jika diisi)
+  totalAssetValue: number;        // Total Aset = nilai BTC + saldo tunai IDR
   floatingPnlIdr: number;
   floatingPnlPercent: number;
   transactionCount: number;       // Total seluruh transaksi (beli + jual)

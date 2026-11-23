@@ -23,6 +23,13 @@ export const StreakMetadataSchema = z.object({
   streakFreezesAvailable: z.number().nonnegative(),
 });
 
+export const FloqSyncConfigSchema = z.object({
+  priceSpreadPercent: z.number(),
+  cashBalanceIdr: z.number().nonnegative().optional(),
+  lastSyncedAt: z.string().optional(),
+  lockedCalibration: z.boolean().optional(),
+});
+
 export const BlockHabitStorageSchema = z.object({
   profile: z.object({
     startDate: z.string(),
@@ -30,6 +37,7 @@ export const BlockHabitStorageSchema = z.object({
     dailyFloorIdr: z.number().nonnegative(),
     exchangeName: z.string(),
     hideBalanceOnShare: z.boolean(),
+    floqSync: FloqSyncConfigSchema.optional(),
   }),
   streak: StreakMetadataSchema,
   transactions: z.array(HabitTransactionSchema),

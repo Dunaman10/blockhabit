@@ -11,6 +11,8 @@ import {
   RefreshCw,
   SlidersHorizontal,
   Check,
+  RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -21,7 +23,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { AnalyticsSummary, HabitTransaction } from "@/types";
+import { AnalyticsSummary, HabitTransaction, FloqSyncConfig } from "@/types";
 import {
   formatIdr,
   formatSats,
@@ -29,12 +31,24 @@ import {
   buildPortfolioChartSeries,
 } from "@/lib/calculations";
 
+interface FloqSyncParams {
+  targetTotalBtc?: number;
+  targetTotalAssetIdr?: number;
+  targetFloqBtcPrice?: number;
+  cashBalanceIdr?: number;
+}
+
 interface AnalyticsSectionProps {
   analytics: AnalyticsSummary;
   transactions: HabitTransaction[];
   currentBtcPrice: number;
+  liveMarketPrice?: number;
+  floqSync?: FloqSyncConfig;
+  isRefreshingTicker?: boolean;
+  onRefreshTicker?: () => void;
   onSyncHistoricalPrices?: () => void;
-  onCalibrateTotalBtc?: (targetTotalBtc: number) => void;
+  onSyncWithFloq?: (params: FloqSyncParams) => void;
+  onResetFloqSync?: () => void;
   onCalibrateAvgBuyPrice?: (targetAvgPriceIdr: number) => void;
 }
 
@@ -42,16 +56,31 @@ export function AnalyticsSection({
   analytics,
   transactions,
   currentBtcPrice,
+  liveMarketPrice,
+  floqSync,
+  isRefreshingTicker = false,
+  onRefreshTicker,
   onSyncHistoricalPrices,
-  onCalibrateTotalBtc,
+  onSyncWithFloq,
+  onResetFloqSync,
   onCalibrateAvgBuyPrice,
 }: AnalyticsSectionProps) {
   const isProfit = analytics.floatingPnlIdr > 0;
   const isLoss = analytics.floatingPnlIdr < 0;
 
+  const baseMarketPrice = liveMarketPrice && liveMarketPrice > 0 ? liveMarketPrice : currentBtcPrice;
+  const activeSpreadPct = floqSync?.priceSpreadPercent ?? 0;
+  const hasFloqAdjustment =
+    Math.abs(activeSpreadPct) >= 0.001 || (floqSync?.cashBalanceIdr ?? 0) > 0;
+
   const [showCalibrate, setShowCalibrate] = useState(false);
-  const [calibrateMode, setCalibrateMode] = useState<"btc" | "avgPrice">("btc");
+  const [calibrateMode, setCalibrateMode] = useState<"exactAsset" | "floqPrice" | "avgPrice">(
+    "exactAsset"
+  );
+  const [inputTotalAssetIdr, setInputTotalAssetIdr] = useState("");
   const [inputBtc, setInputBtc] = useState("");
+  const [inputCashIdr, setInputCashIdr] = useState("");
+  const [inputFloqPrice, setInputFloqPrice] = useState("");
   const [inputAvgPrice, setInputAvgPrice] = useState("");
 
   // Siapkan data grafik pertumbuhan kumulatif modal aktif vs nilai portofolio
@@ -59,12 +88,69 @@ export function AnalyticsSection({
     return buildPortfolioChartSeries(transactions, currentBtcPrice);
   }, [transactions, currentBtcPrice]);
 
+  const openCalibrationPanel = () => {
+    setInputTotalAssetIdr(
+      analytics.totalAssetValue > 0 ? Math.round(analytics.totalAssetValue).toString() : ""
+    );
+    setInputBtc(analytics.totalBtc.toFixed(8));
+    setInputCashIdr(
+      analytics.cashBalanceIdr > 0 ? Math.round(analytics.cashBalanceIdr).toString() : "0"
+    );
+    setInputFloqPrice(Math.round(currentBtcPrice).toString());
+    setInputAvgPrice(analytics.averageBuyPrice.toString());
+    setShowCalibrate(true);
+  };
+
+  // Pratinjau estimasi spread harga FLOQ saat mengisi Mode "Samakan Total Aset"
+  const previewExactAsset = React.useMemo(() => {
+    const parsedAsset = parseInt(inputTotalAssetIdr.replace(/\D/g, ""), 10);
+    const parsedCash = parseInt(inputCashIdr.replace(/\D/g, ""), 10) || 0;
+    const parsedBtc = parseFloat(inputBtc.replace(",", "."));
+    if (
+      isNaN(parsedAsset) ||
+      parsedAsset <= 0 ||
+      isNaN(parsedBtc) ||
+      parsedBtc <= 0 ||
+      baseMarketPrice <= 0
+    ) {
+      return null;
+    }
+    const btcVal = Math.max(0, parsedAsset - parsedCash);
+    const impliedPrice = btcVal / parsedBtc;
+    const spreadPct = ((impliedPrice - baseMarketPrice) / baseMarketPrice) * 100;
+    return {
+      impliedPrice: Math.round(impliedPrice),
+      spreadPct,
+      btcVal,
+    };
+  }, [inputTotalAssetIdr, inputCashIdr, inputBtc, baseMarketPrice]);
+
   const handleApplyCalibration = (e: React.FormEvent) => {
     e.preventDefault();
-    if (calibrateMode === "btc" && onCalibrateTotalBtc) {
-      const parsed = parseFloat(inputBtc.replace(",", "."));
-      if (!isNaN(parsed) && parsed > 0) {
-        onCalibrateTotalBtc(parsed);
+
+    if (calibrateMode === "exactAsset" && onSyncWithFloq) {
+      const parsedBtc = parseFloat(inputBtc.replace(",", "."));
+      const parsedAsset = parseInt(inputTotalAssetIdr.replace(/\D/g, ""), 10);
+      const parsedCash = parseInt(inputCashIdr.replace(/\D/g, ""), 10) || 0;
+
+      const params: FloqSyncParams = {
+        cashBalanceIdr: parsedCash,
+      };
+      if (!isNaN(parsedBtc) && parsedBtc >= 0) {
+        params.targetTotalBtc = parsedBtc;
+      }
+      if (!isNaN(parsedAsset) && parsedAsset >= 0) {
+        params.targetTotalAssetIdr = parsedAsset;
+      }
+
+      if (params.targetTotalBtc !== undefined || params.targetTotalAssetIdr !== undefined) {
+        onSyncWithFloq(params);
+        setShowCalibrate(false);
+      }
+    } else if (calibrateMode === "floqPrice" && onSyncWithFloq) {
+      const parsedPrice = parseInt(inputFloqPrice.replace(/\D/g, ""), 10);
+      if (!isNaN(parsedPrice) && parsedPrice > 0) {
+        onSyncWithFloq({ targetFloqBtcPrice: parsedPrice });
         setShowCalibrate(false);
       }
     } else if (calibrateMode === "avgPrice" && onCalibrateAvgBuyPrice) {
@@ -81,13 +167,13 @@ export function AnalyticsSection({
     <div className="space-y-3">
       {/* 4 Kartu Metrik Utama */}
       <div className="grid grid-cols-2 gap-2.5">
-        {/* Card 1: Nilai Portofolio & Floating PnL */}
+        {/* Card 1: Total Aset / Portofolio & Floating PnL */}
         <div className="p-3 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between min-w-0">
           <div>
             <div className="flex items-center justify-between gap-1 text-slate-400 mb-1">
               <span className="text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 truncate">
                 <Wallet className="w-3 h-3 text-blue-400 shrink-0" />
-                <span className="truncate">Portofolio</span>
+                <span className="truncate">Total Aset</span>
               </span>
               <span
                 className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center shrink-0 whitespace-nowrap ${
@@ -104,8 +190,14 @@ export function AnalyticsSection({
               </span>
             </div>
             <div className="text-base sm:text-xl font-black text-slate-100 tracking-tight truncate">
-              {formatIdr(analytics.currentPortfolioValue)}
+              {formatIdr(analytics.totalAssetValue)}
             </div>
+            {analytics.cashBalanceIdr > 0 && (
+              <p className="text-[9px] text-slate-400 mt-0.5 truncate">
+                BTC {formatIdr(analytics.currentPortfolioValue)} + Kas{" "}
+                {formatIdr(analytics.cashBalanceIdr)}
+              </p>
+            )}
           </div>
           <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] flex items-center justify-between gap-1">
             <span className="text-slate-400 shrink-0">PnL:</span>
@@ -241,7 +333,7 @@ export function AnalyticsSection({
           </div>
         </div>
 
-        {/* Card 4: Posisi Rata-Rata Harga Beli BTC vs Harga Pasar + Kalibrasi FLOQ */}
+        {/* Card 4: Posisi Rata-Rata Harga Beli BTC vs Harga Pasar + Kalibrasi Presisi FLOQ */}
         <div className="col-span-2 p-3.5 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -254,9 +346,36 @@ export function AnalyticsSection({
                 </span>
                 <span className="text-[10px] text-slate-400 shrink-0">/ BTC</span>
               </div>
-              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
-                Harga Pasar Live: {formatIdr(currentBtcPrice)}
-              </p>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-[10px] text-slate-500 truncate">
+                  {hasFloqAdjustment ? "Harga Acuan FLOQ" : "Harga Pasar Live"}:{" "}
+                  <span className="text-slate-300 font-semibold">
+                    {formatIdr(Math.round(currentBtcPrice))}
+                  </span>
+                </p>
+                {onRefreshTicker && (
+                  <button
+                    type="button"
+                    onClick={onRefreshTicker}
+                    disabled={isRefreshingTicker}
+                    className="inline-flex items-center gap-0.5 text-[10px] text-sky-400 hover:text-sky-300 font-semibold"
+                    title="Segarkan harga BTC live sekarang"
+                  >
+                    <RefreshCw
+                      className={`w-2.5 h-2.5 ${isRefreshingTicker ? "animate-spin" : ""}`}
+                    />
+                    <span>Live</span>
+                  </button>
+                )}
+              </div>
+              {hasFloqAdjustment && (
+                <div className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[9px] text-emerald-300 font-semibold">
+                  <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+                  <span>
+                    Tersinkron FLOQ ({formatPercent(activeSpreadPct)} vs Indodax)
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-right shrink-0">
               <span className="text-[9px] text-slate-400 block">Status Posisi</span>
@@ -280,22 +399,26 @@ export function AnalyticsSection({
             </div>
           </div>
 
-          {/* Tombol Kalibrasi FLOQ & Sinkronisasi Harga Historis */}
+          {/* Tombol Kalibrasi Presisi FLOQ & Sinkronisasi Harga Historis */}
           {transactions.length > 0 && (
             <div className="pt-2 border-t border-slate-800/80">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
-                    setInputBtc(analytics.totalBtc.toFixed(8));
-                    setInputAvgPrice(analytics.averageBuyPrice.toString());
-                    setShowCalibrate(!showCalibrate);
+                    if (showCalibrate) {
+                      setShowCalibrate(false);
+                    } else {
+                      openCalibrationPanel();
+                    }
                   }}
                   className="text-[11px] font-semibold text-[#F7931A] hover:underline flex items-center gap-1"
                 >
                   <SlidersHorizontal className="w-3 h-3" />
                   <span>
-                    {showCalibrate ? "Tutup Kalibrasi FLOQ" : "Sesuaikan Akurat dengan Saldo FLOQ"}
+                    {showCalibrate
+                      ? "Tutup Kalibrasi FLOQ"
+                      : "Samakan Persis dengan Total Aset FLOQ"}
                   </span>
                 </button>
 
@@ -318,70 +441,164 @@ export function AnalyticsSection({
                   className="mt-2.5 p-3 rounded-xl bg-slate-900/90 border border-slate-700/80 space-y-2.5 animate-in fade-in duration-150"
                 >
                   <p className="text-[10px] text-slate-300 leading-relaxed">
-                    Agar PnL & nilai portofolio <strong>100% sama persis dengan aplikasi FLOQ</strong>,
-                    masukkan salah satu data dari portofolio FLOQ kamu:
+                    Karena harga BTC di <strong>FLOQ</strong> memiliki sedikit selisih{" "}
+                    <em>spread</em> dibanding Indodax, samakan langsung angkanya di sini agar{" "}
+                    <strong>Total Aset &amp; Saldo BTC 100% identik dengan aplikasi FLOQ</strong>{" "}
+                    dan tetap bergerak live!
                   </p>
 
-                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] font-bold">
+                  <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px] font-bold">
                     <button
                       type="button"
-                      onClick={() => setCalibrateMode("btc")}
-                      className={`py-1.5 px-2 rounded-md transition-all ${
-                        calibrateMode === "btc"
+                      onClick={() => setCalibrateMode("exactAsset")}
+                      className={`py-1.5 px-1.5 rounded-md transition-all truncate ${
+                        calibrateMode === "exactAsset"
                           ? "bg-[#F7931A] text-black"
                           : "text-slate-400 hover:text-white"
                       }`}
                     >
-                      Input Total BTC FLOQ
+                      Total Aset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalibrateMode("floqPrice")}
+                      className={`py-1.5 px-1.5 rounded-md transition-all truncate ${
+                        calibrateMode === "floqPrice"
+                          ? "bg-[#F7931A] text-black"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Harga FLOQ
                     </button>
                     <button
                       type="button"
                       onClick={() => setCalibrateMode("avgPrice")}
-                      className={`py-1.5 px-2 rounded-md transition-all ${
+                      className={`py-1.5 px-1.5 rounded-md transition-all truncate ${
                         calibrateMode === "avgPrice"
                           ? "bg-[#F7931A] text-black"
                           : "text-slate-400 hover:text-white"
                       }`}
                     >
-                      Input Harga Rata-Rata Beli
+                      Avg Beli
                     </button>
                   </div>
 
-                  {calibrateMode === "btc" ? (
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">
-                        Total Saldo BTC di Aplikasi FLOQ (contoh: 0.00015230):
+                  {calibrateMode === "exactAsset" && (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[10px] text-slate-300 font-semibold block mb-1">
+                          Total Aset di Aplikasi FLOQ saat ini (Rp):
+                        </label>
+                        <input
+                          type="text"
+                          value={inputTotalAssetIdr}
+                          onChange={(e) => setInputTotalAssetIdr(e.target.value.replace(/\D/g, ""))}
+                          placeholder="Contoh: 248350"
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-[#F7931A]"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">
+                            Total Saldo BTC di FLOQ:
+                          </label>
+                          <input
+                            type="text"
+                            value={inputBtc}
+                            onChange={(e) => setInputBtc(e.target.value)}
+                            placeholder="0.00015230"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-[#F7931A]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">
+                            Sisa Saldo IDR Tunai (Opsional):
+                          </label>
+                          <input
+                            type="text"
+                            value={inputCashIdr}
+                            onChange={(e) => setInputCashIdr(e.target.value.replace(/\D/g, ""))}
+                            placeholder="0"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-[#F7931A]"
+                          />
+                        </div>
+                      </div>
+
+                      {previewExactAsset && (
+                        <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800 text-[10px] flex items-center justify-between gap-2">
+                          <span className="text-slate-400">
+                            Harga Acuan FLOQ:{" "}
+                            <strong className="text-slate-200">
+                              {formatIdr(previewExactAsset.impliedPrice)}
+                            </strong>
+                          </span>
+                          <span className="font-mono font-bold text-[#F7931A] shrink-0">
+                            Spread {formatPercent(previewExactAsset.spreadPct)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {calibrateMode === "floqPrice" && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-300 font-semibold block">
+                        Harga Live 1 BTC di Aplikasi FLOQ saat ini (Rp):
                       </label>
                       <input
                         type="text"
-                        value={inputBtc}
-                        onChange={(e) => setInputBtc(e.target.value)}
-                        placeholder="0.00015230"
+                        value={inputFloqPrice}
+                        onChange={(e) => setInputFloqPrice(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Contoh: 1492500000"
                         className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-[#F7931A]"
                       />
+                      <p className="text-[10px] text-slate-400">
+                        Harga Indodax saat ini: {formatIdr(baseMarketPrice)}. Rasio selisih harga
+                        akan otomatis tersimpan dan ikut bergerak live.
+                      </p>
                     </div>
-                  ) : (
+                  )}
+
+                  {calibrateMode === "avgPrice" && (
                     <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">
+                      <label className="text-[10px] text-slate-300 font-semibold block mb-1">
                         Harga Rata-Rata Beli BTC di FLOQ (Rp):
                       </label>
                       <input
                         type="text"
                         value={inputAvgPrice}
-                        onChange={(e) => setInputAvgPrice(e.target.value)}
+                        onChange={(e) => setInputAvgPrice(e.target.value.replace(/\D/g, ""))}
                         placeholder="Contoh: 1495000000"
                         className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-[#F7931A]"
                       />
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    className="w-full py-2 px-3 rounded-lg bg-[#F7931A] text-black font-extrabold text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>Terapkan Kalibrasi FLOQ</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 px-3 rounded-lg bg-[#F7931A] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 hover:brightness-105 active:scale-[0.99] transition-all"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>Samakan dengan FLOQ</span>
+                    </button>
+
+                    {hasFloqAdjustment && onResetFloqSync && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onResetFloqSync();
+                          setShowCalibrate(false);
+                        }}
+                        className="py-2 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1 shrink-0"
+                        title="Kembalikan harga acuan ke Indodax murni (0% spread)"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset</span>
+                      </button>
+                    )}
+                  </div>
                 </form>
               )}
             </div>
@@ -453,7 +670,7 @@ export function AnalyticsSection({
                     fontSize: "11px",
                     color: "#F8FAFC",
                   }}
-                  formatter={(value: any) => [formatIdr(Number(value) || 0), ""]}
+                  formatter={(value) => [formatIdr(Number(value) || 0), ""]}
                   labelStyle={{ color: "#94A3B8", fontWeight: 600, marginBottom: "2px" }}
                 />
                 <Area

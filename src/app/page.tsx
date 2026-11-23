@@ -27,6 +27,8 @@ import {
   recalculateStreak,
   getLocalDateString,
   isSellTransaction,
+  getEffectiveBtcPrice,
+  calibrateTransactionsToExactBtc,
 } from "@/lib/calculations";
 import {
   DEFAULT_BTC_PRICE_IDR,
@@ -94,6 +96,20 @@ export default function HomePage() {
   const [clientDate, setClientDate] = useState<Date>(
     new Date("2026-10-28T00:00:00.000Z")
   );
+  const [isRefreshingTicker, setIsRefreshingTicker] = useState(false);
+
+  const fetchLiveTicker = React.useCallback(async () => {
+    setIsRefreshingTicker(true);
+    try {
+      const res = await fetch("/api/ticker", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.priceIdr) setTicker(data);
+    } catch (err) {
+      console.warn("Gagal memuat ticker:", err);
+    } finally {
+      setIsRefreshingTicker(false);
+    }
+  }, []);
 
   // Load from browser localStorage on initial render
   useEffect(() => {
@@ -108,13 +124,9 @@ export default function HomePage() {
         .catch((err) => console.warn("SW registration skipped:", err));
     }
 
-    // Fetch Live Ticker
-    fetch("/api/ticker")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.priceIdr) setTicker(data);
-      })
-      .catch((err) => console.warn("Gagal memuat ticker:", err));
+    // Fetch Live Ticker & auto-refresh setiap 30 detik agar harga tetap sinkron real-time
+    fetchLiveTicker();
+    const tickerInterval = setInterval(fetchLiveTicker, 30000);
 
     // Fetch Historical Daily Prices & Auto-Fix Past Transactions that used Today's Price
     fetch("/api/history")
@@ -124,9 +136,14 @@ export default function HomePage() {
           const priceMap: Record<string, number> = data.priceByDate;
           setHistoricalPrices(priceMap);
 
+          // Jangan pernah menimpa jika pengguna sudah mengkalibrasi saldo dengan aplikasi FLOQ!
+          const currentLoaded = loadStorageFromBrowser();
+          if (currentLoaded.profile.floqSync?.lockedCalibration) {
+            return;
+          }
+
           // Jika ada transaksi beli masa lalu yang semuanya memakai harga beli yang sama (akibat import/backdate tanpa harga historis),
           // otomatis sesuaikan dengan harga BTC historis pada masing-masing tanggal!
-          const currentLoaded = loadStorageFromBrowser();
           const buyTxs = currentLoaded.transactions.filter((t) => !isSellTransaction(t));
           if (buyTxs.length > 1) {
             const uniquePrices = new Set(buyTxs.map((t) => Math.round(t.btcPriceAtBuy)));
@@ -171,7 +188,9 @@ export default function HomePage() {
         if (data?.currentBlock) setHalving(data);
       })
       .catch((err) => console.warn("Gagal memuat halving:", err));
-  }, []);
+
+    return () => clearInterval(tickerInterval);
+  }, [fetchLiveTicker]);
 
   // Update localStorage when storage state changes
   const updateStorage = (newStorage: BlockHabitStorage) => {
@@ -179,9 +198,16 @@ export default function HomePage() {
     saveStorageToBrowser(newStorage);
   };
 
-  // Analytics calculation
-  const currentPrice = ticker.priceIdr || DEFAULT_BTC_PRICE_IDR;
-  const analytics = calculateAnalytics(storage.transactions, currentPrice, clientDate);
+  // Analytics calculation (gunakan harga efektif yang sudah disesuaikan dengan FLOQ jika disinkronkan)
+  const liveMarketPrice = ticker.priceIdr || DEFAULT_BTC_PRICE_IDR;
+  const currentPrice = getEffectiveBtcPrice(liveMarketPrice, storage.profile.floqSync);
+  const cashBalanceIdr = storage.profile.floqSync?.cashBalanceIdr || 0;
+  const analytics = calculateAnalytics(
+    storage.transactions,
+    currentPrice,
+    clientDate,
+    cashBalanceIdr
+  );
 
   // Sync Historical Prices Manually (khusus transaksi beli)
   const handleSyncHistoricalPrices = () => {
@@ -209,40 +235,77 @@ export default function HomePage() {
     });
   };
 
-  // Calibrate Total BTC to match FLOQ exactly (mempertahankan riwayat jual)
-  const handleCalibrateTotalBtc = (targetTotalBtc: number) => {
-    const buyTxs = storage.transactions.filter((tx) => !isSellTransaction(tx));
-    if (buyTxs.length === 0 || targetTotalBtc < 0) return;
-    const totalBuyCapital = buyTxs.reduce((acc, tx) => acc + tx.amountIdr, 0);
-    if (totalBuyCapital <= 0) return;
+  // Sinkronisasi Presisi 100% dengan Aplikasi FLOQ (Total Aset Rp, Saldo BTC eksak, Harga FLOQ, dan Saldo Kas IDR)
+  const handleSyncWithFloq = (params: {
+    targetTotalBtc?: number;
+    targetTotalAssetIdr?: number;
+    targetFloqBtcPrice?: number;
+    cashBalanceIdr?: number;
+  }) => {
+    let updatedTxs = storage.transactions;
+    const nextCashIdr = Math.max(
+      0,
+      Math.round(params.cashBalanceIdr ?? (storage.profile.floqSync?.cashBalanceIdr || 0))
+    );
 
-    const totalSoldBtc = storage.transactions
-      .filter((tx) => isSellTransaction(tx))
-      .reduce((acc, tx) => acc + (Number(tx.btcAmount) || 0), 0);
-    const neededBoughtBtc = targetTotalBtc + totalSoldBtc;
-    if (neededBoughtBtc <= 0) return;
+    if (params.targetTotalBtc !== undefined && params.targetTotalBtc >= 0) {
+      updatedTxs = calibrateTransactionsToExactBtc(updatedTxs, params.targetTotalBtc);
+    }
 
-    const impliedAvgPrice = Math.round(totalBuyCapital / neededBoughtBtc);
-    const updatedTxs = storage.transactions.map((tx) => {
-      if (isSellTransaction(tx)) return tx;
-      const weight = tx.amountIdr / totalBuyCapital;
-      const txBtc = parseFloat((neededBoughtBtc * weight).toFixed(8));
-      const txSats = Math.round(txBtc * 100_000_000);
-      return {
-        ...tx,
-        btcPriceAtBuy: impliedAvgPrice,
-        btcAmount: txBtc,
-        satsAmount: txSats,
-      };
-    });
+    const tempSummary = calculateAnalytics(updatedTxs, liveMarketPrice, clientDate, nextCashIdr);
+    const resultingBtc = tempSummary.totalBtc;
+
+    let nextSpreadPercent = storage.profile.floqSync?.priceSpreadPercent ?? 0;
+
+    if (
+      params.targetFloqBtcPrice !== undefined &&
+      params.targetFloqBtcPrice > 0 &&
+      liveMarketPrice > 0
+    ) {
+      nextSpreadPercent = ((params.targetFloqBtcPrice - liveMarketPrice) / liveMarketPrice) * 100;
+    } else if (
+      params.targetTotalAssetIdr !== undefined &&
+      params.targetTotalAssetIdr >= 0 &&
+      resultingBtc > 0 &&
+      liveMarketPrice > 0
+    ) {
+      const targetBtcValueIdr = Math.max(0, params.targetTotalAssetIdr - nextCashIdr);
+      const impliedFloqPrice = targetBtcValueIdr / resultingBtc;
+      nextSpreadPercent = ((impliedFloqPrice - liveMarketPrice) / liveMarketPrice) * 100;
+    }
 
     updateStorage({
       ...storage,
       transactions: updatedTxs,
+      profile: {
+        ...storage.profile,
+        floqSync: {
+          priceSpreadPercent: nextSpreadPercent,
+          cashBalanceIdr: nextCashIdr,
+          lastSyncedAt: new Date().toISOString(),
+          lockedCalibration: true,
+        },
+      },
     });
   };
 
-  // Calibrate Average Buy Price to match FLOQ exactly (khusus transaksi beli)
+  // Reset penyesuaian spread harga FLOQ & saldo kas IDR (tetap pertahankan kunci kalibrasi BTC)
+  const handleResetFloqSync = () => {
+    updateStorage({
+      ...storage,
+      profile: {
+        ...storage.profile,
+        floqSync: {
+          priceSpreadPercent: 0,
+          cashBalanceIdr: 0,
+          lastSyncedAt: undefined,
+          lockedCalibration: storage.profile.floqSync?.lockedCalibration ?? false,
+        },
+      },
+    });
+  };
+
+  // Calibrate Average Buy Price to match FLOQ exactly (khusus transaksi beli & dikunci dari auto-overwrite)
   const handleCalibrateAvgBuyPrice = (targetAvgPriceIdr: number) => {
     if (storage.transactions.length === 0 || targetAvgPriceIdr <= 0) return;
     const updatedTxs = storage.transactions.map((tx) => {
@@ -260,6 +323,15 @@ export default function HomePage() {
     updateStorage({
       ...storage,
       transactions: updatedTxs,
+      profile: {
+        ...storage.profile,
+        floqSync: {
+          priceSpreadPercent: storage.profile.floqSync?.priceSpreadPercent ?? 0,
+          cashBalanceIdr: storage.profile.floqSync?.cashBalanceIdr ?? 0,
+          lastSyncedAt: new Date().toISOString(),
+          lockedCalibration: true,
+        },
+      },
     });
   };
 
@@ -367,8 +439,13 @@ export default function HomePage() {
               analytics={analytics}
               transactions={storage.transactions}
               currentBtcPrice={currentPrice}
+              liveMarketPrice={liveMarketPrice}
+              floqSync={storage.profile.floqSync}
+              isRefreshingTicker={isRefreshingTicker}
+              onRefreshTicker={fetchLiveTicker}
               onSyncHistoricalPrices={handleSyncHistoricalPrices}
-              onCalibrateTotalBtc={handleCalibrateTotalBtc}
+              onSyncWithFloq={handleSyncWithFloq}
+              onResetFloqSync={handleResetFloqSync}
               onCalibrateAvgBuyPrice={handleCalibrateAvgBuyPrice}
             />
 

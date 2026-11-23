@@ -4,9 +4,9 @@ import { MarketTicker } from "@/types";
 
 export async function GET() {
   try {
-    // 1. Coba Indodax Public Ticker API (Rupiah primer)
+    // 1. Coba Indodax Public Ticker API (Rupiah primer, tanpa cache usang agar harga selalu segar)
     const indodaxRes = await fetch("https://indodax.com/api/ticker/btcidr", {
-      next: { revalidate: 60 },
+      cache: "no-store",
       headers: { "User-Agent": "BlockHabit-PWA/1.0" },
     });
 
@@ -25,6 +25,8 @@ export async function GET() {
 
         const ticker: MarketTicker = {
           priceIdr: lastPrice,
+          buyPriceIdr: buyPrice,
+          sellPriceIdr: sellPrice,
           change24h: parseFloat(change24h.toFixed(2)),
           high24h: highPrice,
           low24h: lowPrice,
@@ -44,7 +46,7 @@ export async function GET() {
     const cgRes = await fetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=idr&include_24hr_change=true",
       {
-        next: { revalidate: 60 },
+        cache: "no-store",
         headers: { "User-Agent": "BlockHabit-PWA/1.0" },
       }
     );
