@@ -22,7 +22,12 @@ import {
   CartesianGrid,
 } from "recharts";
 import { AnalyticsSummary, HabitTransaction } from "@/types";
-import { formatIdr, formatSats, formatPercent, formatDate } from "@/lib/calculations";
+import {
+  formatIdr,
+  formatSats,
+  formatPercent,
+  buildPortfolioChartSeries,
+} from "@/lib/calculations";
 
 interface AnalyticsSectionProps {
   analytics: AnalyticsSummary;
@@ -49,28 +54,9 @@ export function AnalyticsSection({
   const [inputBtc, setInputBtc] = useState("");
   const [inputAvgPrice, setInputAvgPrice] = useState("");
 
-  // Siapkan data grafik pertumbuhan kumulatif modal vs nilai portofolio
+  // Siapkan data grafik pertumbuhan kumulatif modal aktif vs nilai portofolio
   const chartData = React.useMemo(() => {
-    if (!transactions || transactions.length === 0) return [];
-
-    const sorted = [...transactions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-
-    let cumulativeCapital = 0;
-    let cumulativeBtc = 0;
-
-    return sorted.map((tx) => {
-      cumulativeCapital += Number(tx.amountIdr) || 0;
-      cumulativeBtc += Number(tx.btcAmount) || 0;
-      const portfolioValue = Math.round(cumulativeBtc * currentBtcPrice);
-
-      return {
-        dateStr: formatDate(tx.date),
-        modalDisetor: cumulativeCapital,
-        nilaiPortofolio: portfolioValue,
-      };
-    });
+    return buildPortfolioChartSeries(transactions, currentBtcPrice);
   }, [transactions, currentBtcPrice]);
 
   const handleApplyCalibration = (e: React.FormEvent) => {
@@ -134,16 +120,19 @@ export function AnalyticsSection({
           </div>
         </div>
 
-        {/* Card 2: Total Modal Disetor */}
+        {/* Card 2: Total Modal Aktif */}
         <div className="p-3 sm:p-4 rounded-2xl glass-panel border border-slate-800 bg-[#0F172A]/70 flex flex-col justify-between min-w-0">
           <div>
             <div className="flex items-center justify-between gap-1 text-slate-400 mb-1">
               <span className="text-[10px] sm:text-[11px] font-semibold flex items-center gap-1 truncate">
                 <Coins className="w-3 h-3 text-[#F7931A] shrink-0" />
-                <span className="truncate">Total Modal</span>
+                <span className="truncate">
+                  {analytics.sellCount > 0 ? "Modal Aktif" : "Total Modal"}
+                </span>
               </span>
               <span className="text-[9px] font-medium text-slate-500 shrink-0 whitespace-nowrap">
-                {analytics.transactionCount}x Beli
+                {analytics.buyCount}x Beli
+                {analytics.sellCount > 0 ? ` • ${analytics.sellCount}x Jual` : ""}
               </span>
             </div>
             <div className="text-base sm:text-xl font-black text-slate-100 tracking-tight truncate">
@@ -157,6 +146,58 @@ export function AnalyticsSection({
             </span>
           </div>
         </div>
+
+        {/* Card Ringkasan Penjualan & Withdraw (Muncul jika ada transaksi jual) */}
+        {analytics.sellCount > 0 && (
+          <div className="col-span-2 p-3.5 sm:p-4 rounded-2xl glass-panel border border-rose-500/25 bg-gradient-to-br from-rose-950/20 via-[#0F172A] to-[#0A0E1A] space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Total Withdraw / Penjualan</span>
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
+                  <span className="text-lg sm:text-xl font-black text-slate-100">
+                    {formatIdr(analytics.totalWithdrawnIdr)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    ({analytics.sellCount}x jual • -{formatSats(analytics.totalSoldSats)})
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[9px] text-slate-400 block">Realized PnL</span>
+                <span
+                  className={`text-xs font-extrabold whitespace-nowrap ${
+                    analytics.realizedPnlIdr > 0
+                      ? "text-emerald-400"
+                      : analytics.realizedPnlIdr < 0
+                      ? "text-rose-400"
+                      : "text-slate-300"
+                  }`}
+                >
+                  {analytics.realizedPnlIdr > 0 ? "+" : ""}
+                  {formatIdr(analytics.realizedPnlIdr)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[10px]">
+              <div className="p-2 rounded-lg bg-slate-900/60 flex items-center justify-between gap-1">
+                <span className="text-slate-400">Total Pernah Disetor</span>
+                <span className="font-bold text-slate-200 truncate">
+                  {formatIdr(analytics.totalBoughtIdr)}
+                </span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/60 flex items-center justify-between gap-1">
+                <span className="text-slate-400">BTC Terjual</span>
+                <span className="font-mono font-bold text-rose-300 truncate">
+                  {analytics.totalSoldBtc.toFixed(8)} ₿
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Card 3: Rata-Rata Input Nominal Beli */}
         <div className="col-span-2 p-3.5 sm:p-4 rounded-2xl glass-panel border border-amber-500/20 bg-gradient-to-br from-[#121A2D] to-[#0A0E1A] shadow-md">
@@ -228,7 +269,13 @@ export function AnalyticsSection({
                     : "bg-slate-800 text-slate-400 border border-slate-700"
                 }`}
               >
-                {isProfit ? "Untung" : isLoss ? "Sedang Rugi" : "BEP / Impas"}
+                {analytics.totalBtc === 0 && analytics.sellCount > 0
+                  ? "Saldo Kosong"
+                  : isProfit
+                  ? "Untung"
+                  : isLoss
+                  ? "Sedang Rugi"
+                  : "BEP / Impas"}
               </span>
             </div>
           </div>
@@ -412,7 +459,7 @@ export function AnalyticsSection({
                 <Area
                   type="monotone"
                   dataKey="modalDisetor"
-                  name="Modal Disetor"
+                  name="Modal Aktif"
                   stroke="#94A3B8"
                   strokeWidth={2}
                   fillOpacity={1}

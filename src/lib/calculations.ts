@@ -1,6 +1,13 @@
 import { HabitTransaction, StreakMetadata, AnalyticsSummary } from "@/types";
 
 /**
+ * Cek apakah transaksi merupakan penjualan / withdraw
+ */
+export function isSellTransaction(tx: HabitTransaction): boolean {
+  return tx.type === "sell";
+}
+
+/**
  * Format angka ke mata uang Rupiah (contoh: Rp10.000)
  */
 export function formatIdr(amount: number): string {
@@ -90,7 +97,9 @@ export function recalculateStreak(
   currentFreezes: number = 0,
   referenceDate: Date = new Date("2026-10-28T00:00:00.000Z")
 ): StreakMetadata {
-  if (!transactions || transactions.length === 0) {
+  const buyTransactions = (transactions || []).filter((tx) => !isSellTransaction(tx));
+
+  if (buyTransactions.length === 0) {
     return {
       currentStreak: 0,
       longestStreak: 0,
@@ -99,9 +108,9 @@ export function recalculateStreak(
     };
   }
 
-  // 1. Kumpulkan seluruh tanggal unik di mana ada transaksi
+  // 1. Kumpulkan seluruh tanggal unik di mana ada transaksi BELI (DCA)
   const loggedDateSet = new Set<string>();
-  transactions.forEach((tx) => {
+  buyTransactions.forEach((tx) => {
     if (tx.date) {
       loggedDateSet.add(getLocalDateString(tx.date));
     }
@@ -196,7 +205,24 @@ export function recalculateStreak(
 }
 
 /**
- * Hitung seluruh metrik analytics ringkasan modal, rata-rata, sats, dan PnL
+ * Urutkan transaksi secara kronologis (lama -> baru).
+ * Jika waktunya persis sama, transaksi beli diproses sebelum jual.
+ */
+export function sortTransactionsChronologically(
+  transactions: HabitTransaction[]
+): HabitTransaction[] {
+  return [...transactions].sort((a, b) => {
+    const timeDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    const aSell = isSellTransaction(a) ? 1 : 0;
+    const bSell = isSellTransaction(b) ? 1 : 0;
+    return aSell - bSell;
+  });
+}
+
+/**
+ * Hitung seluruh metrik analytics ringkasan modal aktif, withdraw, rata-rata, sats, dan PnL (floating & realized)
+ * Menggunakan metode Weighted Average Cost Basis secara kronologis.
  */
 export function calculateAnalytics(
   transactions: HabitTransaction[],
@@ -206,6 +232,12 @@ export function calculateAnalytics(
   if (!transactions || transactions.length === 0) {
     return {
       totalCapitalDeployed: 0,
+      totalBoughtIdr: 0,
+      totalWithdrawnIdr: 0,
+      totalSoldBtc: 0,
+      totalSoldSats: 0,
+      realizedPnlIdr: 0,
+      netCashFlowIdr: 0,
       averageHabitTicket: 0,
       minTicket: 0,
       maxTicket: 0,
@@ -217,6 +249,8 @@ export function calculateAnalytics(
       floatingPnlIdr: 0,
       floatingPnlPercent: 0,
       transactionCount: 0,
+      buyCount: 0,
+      sellCount: 0,
     };
   }
 
@@ -224,59 +258,150 @@ export function calculateAnalytics(
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
-  let totalCapitalDeployed = 0;
-  let totalBtc = 0;
-  let totalSats = 0;
+  const chronological = sortTransactionsChronologically(transactions);
+
+  let totalBoughtIdr = 0;
+  let totalWithdrawnIdr = 0;
+  let totalSoldBtc = 0;
+  let totalSoldSats = 0;
+  let realizedPnlIdr = 0;
+
+  let remainingCostBasisIdr = 0;
+  let heldBtc = 0;
+  let heldSats = 0;
+
   let minTicket = Infinity;
   let maxTicket = -Infinity;
   let thisMonthTotal = 0;
+  let buyCount = 0;
+  let sellCount = 0;
 
-  transactions.forEach((tx) => {
+  chronological.forEach((tx) => {
     const amount = Number(tx.amountIdr) || 0;
-    totalCapitalDeployed += amount;
-    if (amount < minTicket) minTicket = amount;
-    if (amount > maxTicket) maxTicket = amount;
-
     const btc = Number(tx.btcAmount) || 0;
-    totalBtc += btc;
-
     const sats = Number(tx.satsAmount) || Math.round(btc * 100_000_000);
-    totalSats += sats;
 
-    // Hitung akumulasi bulan ini
-    try {
-      const txDate = new Date(tx.date);
-      if (txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth) {
-        thisMonthTotal += amount;
+    if (isSellTransaction(tx)) {
+      sellCount += 1;
+      const proceedsIdr =
+        tx.netValueIdr !== undefined && tx.netValueIdr > 0 ? Number(tx.netValueIdr) : amount;
+
+      totalWithdrawnIdr += proceedsIdr;
+      totalSoldBtc += btc;
+      totalSoldSats += sats;
+
+      // Hitung porsi cost basis yang dijual (Weighted Average Cost)
+      const sellRatio = heldBtc > 0 ? Math.min(1, btc / heldBtc) : 0;
+      const costOfSoldIdr = remainingCostBasisIdr * sellRatio;
+      realizedPnlIdr += proceedsIdr - costOfSoldIdr;
+
+      remainingCostBasisIdr = Math.max(0, remainingCostBasisIdr - costOfSoldIdr);
+      heldBtc = Math.max(0, heldBtc - btc);
+      heldSats = Math.max(0, heldSats - sats);
+
+      // Bersihkan sisa floating point sangat kecil jika saldo habis terjual
+      if (heldBtc < 1e-10 || heldSats === 0) {
+        heldBtc = 0;
+        heldSats = 0;
+        remainingCostBasisIdr = 0;
       }
-    } catch {
-      // abaikan tanggal tidak valid
+    } else {
+      buyCount += 1;
+      totalBoughtIdr += amount;
+      remainingCostBasisIdr += amount;
+      heldBtc += btc;
+      heldSats += sats;
+
+      if (amount < minTicket) minTicket = amount;
+      if (amount > maxTicket) maxTicket = amount;
+
+      // Hitung akumulasi pembelian bulan ini
+      try {
+        const txDate = new Date(tx.date);
+        if (txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth) {
+          thisMonthTotal += amount;
+        }
+      } catch {
+        // abaikan tanggal tidak valid
+      }
     }
   });
 
+  const totalCapitalDeployed = Math.round(remainingCostBasisIdr);
   const transactionCount = transactions.length;
-  const averageHabitTicket = transactionCount > 0 ? Math.round(totalCapitalDeployed / transactionCount) : 0;
-  const averageBuyPrice = totalBtc > 0 ? Math.round(totalCapitalDeployed / totalBtc) : 0;
+  const averageHabitTicket = buyCount > 0 ? Math.round(totalBoughtIdr / buyCount) : 0;
+  const averageBuyPrice = heldBtc > 0 ? Math.round(remainingCostBasisIdr / heldBtc) : 0;
 
-  const currentPortfolioValue = Math.round(totalBtc * currentBtcPrice);
-  const floatingPnlIdr = currentPortfolioValue - totalCapitalDeployed;
+  const currentPortfolioValue = Math.round(heldBtc * currentBtcPrice);
+  const floatingPnlIdr = heldBtc > 0 ? currentPortfolioValue - totalCapitalDeployed : 0;
   const floatingPnlPercent =
-    totalCapitalDeployed > 0 ? ((currentPortfolioValue - totalCapitalDeployed) / totalCapitalDeployed) * 100 : 0;
+    totalCapitalDeployed > 0
+      ? ((currentPortfolioValue - totalCapitalDeployed) / totalCapitalDeployed) * 100
+      : 0;
 
   return {
     totalCapitalDeployed,
+    totalBoughtIdr: Math.round(totalBoughtIdr),
+    totalWithdrawnIdr: Math.round(totalWithdrawnIdr),
+    totalSoldBtc,
+    totalSoldSats: Math.round(totalSoldSats),
+    realizedPnlIdr: Math.round(realizedPnlIdr),
+    netCashFlowIdr: Math.round(totalBoughtIdr - totalWithdrawnIdr),
     averageHabitTicket,
     minTicket: minTicket === Infinity ? 0 : minTicket,
     maxTicket: maxTicket === -Infinity ? 0 : maxTicket,
     thisMonthTotal,
-    totalBtc,
-    totalSats,
+    totalBtc: heldBtc,
+    totalSats: Math.round(heldSats),
     averageBuyPrice,
     currentPortfolioValue,
     floatingPnlIdr,
     floatingPnlPercent,
     transactionCount,
+    buyCount,
+    sellCount,
   };
+}
+
+/**
+ * Bangun data seri kronologis grafik modal aktif vs nilai portofolio
+ */
+export function buildPortfolioChartSeries(
+  transactions: HabitTransaction[],
+  currentBtcPrice: number
+) {
+  if (!transactions || transactions.length === 0) return [];
+
+  const sorted = sortTransactionsChronologically(transactions);
+
+  let remainingCostBasisIdr = 0;
+  let heldBtc = 0;
+
+  return sorted.map((tx) => {
+    const amount = Number(tx.amountIdr) || 0;
+    const btc = Number(tx.btcAmount) || 0;
+
+    if (isSellTransaction(tx)) {
+      const sellRatio = heldBtc > 0 ? Math.min(1, btc / heldBtc) : 0;
+      remainingCostBasisIdr = Math.max(0, remainingCostBasisIdr * (1 - sellRatio));
+      heldBtc = Math.max(0, heldBtc - btc);
+      if (heldBtc < 1e-10) {
+        heldBtc = 0;
+        remainingCostBasisIdr = 0;
+      }
+    } else {
+      remainingCostBasisIdr += amount;
+      heldBtc += btc;
+    }
+
+    const portfolioValue = Math.round(heldBtc * currentBtcPrice);
+
+    return {
+      dateStr: formatDate(tx.date),
+      modalDisetor: Math.round(remainingCostBasisIdr),
+      nilaiPortofolio: portfolioValue,
+    };
+  });
 }
 
 /**

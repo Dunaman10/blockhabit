@@ -206,7 +206,7 @@ export function ShareCardModal({
               <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
                 <span className="text-[10px] text-slate-400 block">Total Blok Ditumpuk</span>
                 <span className="text-xs font-bold text-slate-200">
-                  {analytics.transactionCount} Transaksi
+                  {analytics.buyCount} Transaksi
                 </span>
               </div>
             </div>

@@ -3,7 +3,7 @@
 import React from "react";
 import { Flame, Shield, Share2, Trophy, Calendar, Sparkles } from "lucide-react";
 import { StreakMetadata, HabitTransaction } from "@/types";
-import { getLocalDateString } from "@/lib/calculations";
+import { getLocalDateString, isSellTransaction } from "@/lib/calculations";
 
 interface StreakSectionProps {
   streak: StreakMetadata;
@@ -25,19 +25,26 @@ export function StreakSection({
   // Bangun data kalender heatmap 12 minggu (84 hari) agar pas proporsional di mobile
   const heatmapDays = React.useMemo(() => {
     const days = [];
-    const activeDates = new Set(transactions.map((tx) => getLocalDateString(tx.date)));
+    const activeDates = new Set(
+      transactions.filter((tx) => !isSellTransaction(tx)).map((tx) => getLocalDateString(tx.date))
+    );
+    const sellDates = new Set(
+      transactions.filter((tx) => isSellTransaction(tx)).map((tx) => getLocalDateString(tx.date))
+    );
 
     for (let i = 83; i >= 0; i--) {
       const d = new Date(activeToday);
       d.setDate(activeToday.getDate() - i);
       const dateStr = getLocalDateString(d);
       const hasLogged = activeDates.has(dateStr);
+      const hasSell = sellDates.has(dateStr);
       const isToday = i === 0;
 
       days.push({
         date: d,
         dateStr,
         hasLogged,
+        hasSell,
         isToday,
       });
     }
@@ -53,7 +60,9 @@ export function StreakSection({
 
   const hasLoggedToday = React.useMemo(() => {
     const todayStr = getLocalDateString(activeToday);
-    return transactions.some((tx) => getLocalDateString(tx.date) === todayStr);
+    return transactions.some(
+      (tx) => !isSellTransaction(tx) && getLocalDateString(tx.date) === todayStr
+    );
   }, [transactions, activeToday]);
 
   return (
@@ -142,10 +151,20 @@ export function StreakSection({
             {heatmapDays.map((item, idx) => (
               <div
                 key={idx}
-                title={`${item.dateStr}: ${item.hasLogged ? "Stacked ₿" : "Kosong"}`}
+                title={`${item.dateStr}: ${
+                  item.hasLogged && item.hasSell
+                    ? "Stacked ₿ & Jual/Withdraw"
+                    : item.hasLogged
+                    ? "Stacked ₿"
+                    : item.hasSell
+                    ? "Jual / Withdraw"
+                    : "Kosong"
+                }`}
                 className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-[3px] transition-all ${
                   item.hasLogged
                     ? "bg-gradient-to-tr from-[#F7931A] to-amber-400 shadow-sm shadow-[#F7931A]/30"
+                    : item.hasSell
+                    ? "bg-rose-500/45 border border-rose-500/60"
                     : item.isToday
                     ? "border border-amber-500 bg-slate-800 animate-pulse"
                     : "bg-slate-800/60"

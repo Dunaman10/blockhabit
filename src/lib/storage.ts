@@ -6,6 +6,7 @@ import { recalculateStreak } from "./calculations";
 // Zod Schema Validation
 export const HabitTransactionSchema = z.object({
   id: z.string(),
+  type: z.enum(["buy", "sell"]).optional(),
   date: z.string(),
   amountIdr: z.number().nonnegative(),
   netValueIdr: z.number().optional(),
@@ -130,10 +131,11 @@ export function exportToJsonFile(data: BlockHabitStorage) {
 export function exportToCsvFile(transactions: HabitTransaction[]) {
   const headers = [
     "ID",
+    "Tipe",
     "Tanggal (ISO)",
-    "Nominal Beli (IDR)",
+    "Nominal (IDR)",
     "Nilai Bersih (IDR)",
-    "Harga BTC Beli (IDR)",
+    "Harga BTC Eksekusi (IDR)",
     "Jumlah BTC",
     "Jumlah Sats",
     "Catatan",
@@ -141,6 +143,7 @@ export function exportToCsvFile(transactions: HabitTransaction[]) {
 
   const rows = transactions.map((tx) => [
     `"${tx.id}"`,
+    tx.type === "sell" ? `"JUAL"` : `"BELI"`,
     `"${tx.date}"`,
     tx.amountIdr,
     tx.netValueIdr ?? tx.amountIdr,

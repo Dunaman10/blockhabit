@@ -4,6 +4,15 @@ export const STORAGE_KEY = "blockhabit_data_v1";
 
 export const QUICK_NOMINALS = [9990, 10000, 15000, 20000, 30000, 50000];
 
+export const SELL_QUICK_PERCENTAGES = [25, 50, 75, 100] as const;
+
+export const SELL_REASON_PRESETS = [
+  "Kebutuhan Mendesak",
+  "Withdraw Modal",
+  "Take Profit",
+  "Jual FLOQ",
+] as const;
+
 export const HALVING_TARGET_BLOCK = 1050000;
 export const HALVING_PREVIOUS_BLOCK = 840000; // Halving ke-4 (April 2024)
 

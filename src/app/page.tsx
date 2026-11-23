@@ -8,6 +8,7 @@ import {
   Plus,
   Target,
   Calculator,
+  ArrowUpRight,
 } from "lucide-react";
 
 import {
@@ -15,6 +16,7 @@ import {
   HabitTransaction,
   MarketTicker,
   HalvingData,
+  TransactionType,
 } from "@/types";
 import {
   loadStorageFromBrowser,
@@ -24,6 +26,7 @@ import {
   calculateAnalytics,
   recalculateStreak,
   getLocalDateString,
+  isSellTransaction,
 } from "@/lib/calculations";
 import {
   DEFAULT_BTC_PRICE_IDR,
@@ -76,10 +79,17 @@ export default function HomePage() {
 
   // 4. Modals State
   const [isLoggerOpen, setIsLoggerOpen] = useState(false);
+  const [loggerDefaultType, setLoggerDefaultType] = useState<TransactionType>("buy");
   const [editingTransaction, setEditingTransaction] = useState<HabitTransaction | null>(null);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   const [isShareCardOpen, setIsShareCardOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
+
+  const openLogger = (mode: TransactionType = "buy") => {
+    setEditingTransaction(null);
+    setLoggerDefaultType(mode);
+    setIsLoggerOpen(true);
+  };
 
   const [clientDate, setClientDate] = useState<Date>(
     new Date("2026-10-28T00:00:00.000Z")
@@ -114,16 +124,16 @@ export default function HomePage() {
           const priceMap: Record<string, number> = data.priceByDate;
           setHistoricalPrices(priceMap);
 
-          // Jika ada transaksi masa lalu yang semuanya memakai harga beli yang sama (akibat import/backdate tanpa harga historis),
+          // Jika ada transaksi beli masa lalu yang semuanya memakai harga beli yang sama (akibat import/backdate tanpa harga historis),
           // otomatis sesuaikan dengan harga BTC historis pada masing-masing tanggal!
           const currentLoaded = loadStorageFromBrowser();
-          if (currentLoaded.transactions.length > 1) {
-            const uniquePrices = new Set(
-              currentLoaded.transactions.map((t) => Math.round(t.btcPriceAtBuy))
-            );
+          const buyTxs = currentLoaded.transactions.filter((t) => !isSellTransaction(t));
+          if (buyTxs.length > 1) {
+            const uniquePrices = new Set(buyTxs.map((t) => Math.round(t.btcPriceAtBuy)));
             if (uniquePrices.size <= 2) {
               let changed = false;
               const updatedTxs = currentLoaded.transactions.map((tx) => {
+                if (isSellTransaction(tx)) return tx;
                 const dateKey = getLocalDateString(tx.date);
                 const histPrice = priceMap[dateKey];
                 if (histPrice && histPrice > 0 && Math.abs(tx.btcPriceAtBuy - histPrice) > 1000) {
@@ -173,10 +183,11 @@ export default function HomePage() {
   const currentPrice = ticker.priceIdr || DEFAULT_BTC_PRICE_IDR;
   const analytics = calculateAnalytics(storage.transactions, currentPrice, clientDate);
 
-  // Sync Historical Prices Manually
+  // Sync Historical Prices Manually (khusus transaksi beli)
   const handleSyncHistoricalPrices = () => {
     if (!historicalPrices || Object.keys(historicalPrices).length === 0) return;
     const updatedTxs = storage.transactions.map((tx) => {
+      if (isSellTransaction(tx)) return tx;
       const dateKey = getLocalDateString(tx.date);
       const histPrice = historicalPrices[dateKey];
       if (histPrice && histPrice > 0) {
@@ -198,16 +209,24 @@ export default function HomePage() {
     });
   };
 
-  // Calibrate Total BTC to match FLOQ exactly
+  // Calibrate Total BTC to match FLOQ exactly (mempertahankan riwayat jual)
   const handleCalibrateTotalBtc = (targetTotalBtc: number) => {
-    if (storage.transactions.length === 0 || targetTotalBtc <= 0) return;
-    const totalCapital = storage.transactions.reduce((acc, tx) => acc + tx.amountIdr, 0);
-    if (totalCapital <= 0) return;
+    const buyTxs = storage.transactions.filter((tx) => !isSellTransaction(tx));
+    if (buyTxs.length === 0 || targetTotalBtc < 0) return;
+    const totalBuyCapital = buyTxs.reduce((acc, tx) => acc + tx.amountIdr, 0);
+    if (totalBuyCapital <= 0) return;
 
-    const impliedAvgPrice = Math.round(totalCapital / targetTotalBtc);
+    const totalSoldBtc = storage.transactions
+      .filter((tx) => isSellTransaction(tx))
+      .reduce((acc, tx) => acc + (Number(tx.btcAmount) || 0), 0);
+    const neededBoughtBtc = targetTotalBtc + totalSoldBtc;
+    if (neededBoughtBtc <= 0) return;
+
+    const impliedAvgPrice = Math.round(totalBuyCapital / neededBoughtBtc);
     const updatedTxs = storage.transactions.map((tx) => {
-      const weight = tx.amountIdr / totalCapital;
-      const txBtc = parseFloat((targetTotalBtc * weight).toFixed(8));
+      if (isSellTransaction(tx)) return tx;
+      const weight = tx.amountIdr / totalBuyCapital;
+      const txBtc = parseFloat((neededBoughtBtc * weight).toFixed(8));
       const txSats = Math.round(txBtc * 100_000_000);
       return {
         ...tx,
@@ -223,10 +242,11 @@ export default function HomePage() {
     });
   };
 
-  // Calibrate Average Buy Price to match FLOQ exactly
+  // Calibrate Average Buy Price to match FLOQ exactly (khusus transaksi beli)
   const handleCalibrateAvgBuyPrice = (targetAvgPriceIdr: number) => {
     if (storage.transactions.length === 0 || targetAvgPriceIdr <= 0) return;
     const updatedTxs = storage.transactions.map((tx) => {
+      if (isSellTransaction(tx)) return tx;
       const netIdr = tx.netValueIdr ?? tx.amountIdr;
       const sats = Math.floor((netIdr / targetAvgPriceIdr) * 100_000_000);
       return {
@@ -324,10 +344,7 @@ export default function HomePage() {
       {/* Mobile-First Header */}
       <Header
         streak={storage.streak}
-        onOpenLogger={() => {
-          setEditingTransaction(null);
-          setIsLoggerOpen(true);
-        }}
+        onOpenLogger={() => openLogger("buy")}
         onOpenImporter={() => setIsImporterOpen(true)}
         onOpenShareCard={() => setIsShareCardOpen(true)}
         onOpenBackup={() => setIsBackupOpen(true)}
@@ -342,10 +359,7 @@ export default function HomePage() {
               streak={storage.streak}
               transactions={storage.transactions}
               onOpenShareCard={() => setIsShareCardOpen(true)}
-              onOpenLogger={() => {
-                setEditingTransaction(null);
-                setIsLoggerOpen(true);
-              }}
+              onOpenLogger={() => openLogger("buy")}
               referenceDate={clientDate}
             />
 
@@ -358,17 +372,22 @@ export default function HomePage() {
               onCalibrateAvgBuyPrice={handleCalibrateAvgBuyPrice}
             />
 
-            {/* Quick 1-Tap CTA Button directly in Dashboard flow */}
-            <div className="pt-1">
+            {/* Quick 1-Tap CTA Buttons directly in Dashboard flow */}
+            <div className="pt-1 flex items-center gap-2">
               <button
-                onClick={() => {
-                  setEditingTransaction(null);
-                  setIsLoggerOpen(true);
-                }}
-                className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#F7931A] via-amber-500 to-[#F7931A] text-black font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#F7931A]/30 ring-1 ring-white/20 hover:brightness-110 active:scale-[0.98] transition-all whitespace-nowrap"
+                onClick={() => openLogger("buy")}
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#F7931A] via-amber-500 to-[#F7931A] text-black font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xl shadow-[#F7931A]/30 ring-1 ring-white/20 hover:brightness-110 active:scale-[0.98] transition-all whitespace-nowrap"
               >
                 <Plus className="w-4 h-4 stroke-[3] shrink-0" />
-                <span>1-Tap Catat Beli Bitcoin (+1 Blok)</span>
+                <span>Catat Beli (+1 Blok)</span>
+              </button>
+              <button
+                onClick={() => openLogger("sell")}
+                className="py-3.5 px-4 rounded-2xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all whitespace-nowrap shrink-0"
+                title="Catat Penjualan / Withdraw Modal"
+              >
+                <ArrowUpRight className="w-4 h-4 stroke-[2.5] shrink-0" />
+                <span>Jual / Tarik</span>
               </button>
             </div>
           </div>
@@ -381,10 +400,7 @@ export default function HomePage() {
               ticker={ticker}
               halving={halving}
               averageHabitTicket={analytics.averageHabitTicket}
-              onSelectQuickAction={() => {
-                setEditingTransaction(null);
-                setIsLoggerOpen(true);
-              }}
+              onSelectQuickAction={() => openLogger("buy")}
             />
           </div>
         )}
@@ -423,13 +439,12 @@ export default function HomePage() {
               transactions={storage.transactions}
               onEditTransaction={(tx) => {
                 setEditingTransaction(tx);
+                setLoggerDefaultType(isSellTransaction(tx) ? "sell" : "buy");
                 setIsLoggerOpen(true);
               }}
               onDeleteTransaction={handleDeleteTransaction}
-              onOpenLogger={() => {
-                setEditingTransaction(null);
-                setIsLoggerOpen(true);
-              }}
+              onOpenLogger={() => openLogger("buy")}
+              onOpenSellLogger={() => openLogger("sell")}
             />
           </div>
         )}
@@ -438,10 +453,7 @@ export default function HomePage() {
       {/* Floating 1-Tap Quick Action Button (Always Accessible with Thumb) */}
       <div className="fixed bottom-[4.8rem] right-4 sm:right-6 z-40 pointer-events-auto">
         <button
-          onClick={() => {
-            setEditingTransaction(null);
-            setIsLoggerOpen(true);
-          }}
+          onClick={() => openLogger("buy")}
           className="px-3.5 py-2.5 rounded-full bg-gradient-to-r from-[#F7931A] via-amber-500 to-[#F7931A] text-black font-black text-xs flex items-center gap-1.5 shadow-xl shadow-[#F7931A]/35 hover:brightness-110 active:scale-95 transition-all border border-amber-300/40"
           title="Catat Transaksi DCA Baru"
         >
@@ -611,6 +623,9 @@ export default function HomePage() {
         currentBtcPrice={currentPrice}
         historicalPrices={historicalPrices}
         initialData={editingTransaction}
+        defaultType={loggerDefaultType}
+        availableBtc={analytics.totalBtc}
+        averageBuyPrice={analytics.averageBuyPrice}
       />
 
       <NotepadImporterModal
